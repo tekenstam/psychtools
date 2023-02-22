@@ -36,9 +36,7 @@ try
     rand('state',sum(100*clock));			% reset random number generator
     Screen('Screens');
 
-
     % Add a computer to the list by indicating where the cyberballrace folder is located.
-
     directoryList{1}='/Users/jackgrinband/Dropbox/expts/movie_rating/';
     directoryList{2}='/Users/jack/Dropbox/expts/movie_rating/';
     directoryList{3}='/Users/annika/Dropbox/expts/movie_rating/';
@@ -53,7 +51,7 @@ try
 
     addpath(myexpt)
 
-
+    %% Discover PowerMate dial and keyboard
     devices=PsychHID('Devices');
     for i=1:length(devices)
         findpowermate(i,1)=strcmp(devices(i).product,'Griffin PowerMate');
@@ -63,7 +61,6 @@ try
     end
     keyboardIndex=find(findkeyboard==1);
     powermateIndex=find(findpowermate==1);
-
 
     deviceId = PsychPowerMate('List');
     if ~isempty(deviceId)
@@ -84,13 +81,8 @@ try
     % Setup key mapping:
     space=KbName('SPACE');
     esc=KbName('ESCAPE');
-    right=KbName('RightArrow');
-    left=KbName('LeftArrow');
     up=KbName('UpArrow');
     down=KbName('DownArrow');
-    shift=KbName('RightShift');
-    colorPicker=KbName('c');
-
 
     %===========================================
     % Video parameters
@@ -107,13 +99,10 @@ try
     maxThreads = [];
     movieOptions = [];
 
-
-
     win = PsychImaging('OpenWindow', myscreen, [128, 128, 128]);
     [ monitorFlipInterval nrValidSamples stddev ]=Screen('GetFlipInterval', win);
 
     hz=round(1/monitorFlipInterval);
-
 
     [w, h] = Screen('WindowSize', win);
     Screen('Blendfunction', win, GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
@@ -121,9 +110,7 @@ try
 
     shader = [];
 
-
     Screen('Flip',win);
-    iteration = 0;
     abortit = 0;
 
     % Use blocking wait for new frames by default:
@@ -134,20 +121,12 @@ try
     % Playbackrate defaults to 1:
     rate=1;
 
-    % No mouse color prober/picker by default - Performance impact!
-    colorprobe = 0;
-
     % Choose 16 pixel text size:
     Screen('TextSize', win, 16);
 
     %===========================================
 
-
-
-
-    fromH=0;
     while (abortit<2)
-        
         
         % Show title while movie is loading/prerolling:
         DrawFormattedText(win, ['Loading ...\n' moviename], 'center', 'center', 0, 40);
@@ -185,17 +164,15 @@ try
         
         Hpos=ones(round(hz*movieduration),1); % initialize array
         Vpos=Hpos;
+        result=zeros(round(hz*movieduration),4); % initialize 4-column array;
         
 
         lineWidth=5;
-    %    Vbot=700;
         Vbot=h;
         Vtop=Vbot-100-lineWidth-2;
         Vstart=Vbot-lineWidth+1;
         Vpos(1)=Vstart;
-        counter=1;
-
-        rating(1)=0;
+        counter=0;
 
         dialPos=0;
         oldPos=0;
@@ -210,7 +187,6 @@ try
             if (keyIsDown==1 && keyCode(esc))
                 % Set the abort-demo flag.
                 abortit=2;
-                % clear mex
                 break;
             end
             
@@ -248,61 +224,64 @@ try
                 end
             end
 
+            %% Use currrent dial position relative to old dial position to adjust rating
             diffPos = oldPos - dialPos;
             oldPos = dialPos;
-
-            rating(counter) = rating(counter-1) - diffPos;
-
-            %Make rating a value between 0-9
-            if rating(counter)>10
-                rating(counter)=10;
-            elseif rating(counter)<1
-                rating(counter)=1;
+            if counter==1
+                newRating=0;
+            else
+                newRating = result(counter-1, 4) - diffPos;
             end
-            
-            Screen('DrawLine', win, [0 0 0 255], 1, Vtop-lineWidth, w, Vtop-lineWidth, lineWidth);
-            Screen('DrawLine', win, [0 0 0 255], 1, Vbot-lineWidth, w, Vbot-lineWidth, lineWidth);
-            
-            Vpos(counter)=Vstart-round(dialScale*rating(counter))
-            Hpos(counter,1)=Hpos(counter-1)+1;
 
+            %Make newRating a value between 1-10
+            if newRating>10
+                newRating=10;
+            elseif newRating<1
+                newRating=1;
+            end
+
+            %enter result in matrix
+            result(counter,:) = [subID, 666, counter, newRating];
+            
+            Screen('DrawLine', win, [0 0 0 255], 0, Vtop-lineWidth, w, Vtop-lineWidth, lineWidth);
+            Screen('DrawLine', win, [0 0 0 255], 0, Vbot-lineWidth, w, Vbot-lineWidth, lineWidth);
+            
             %https://www.w3schools.com/colors/colors_picker.asp
             %draw old data points with Red:
-            Screen('DrawDots', win, [(Hpos(1:counter-1))'; (Vpos(1:counter-1))'], 10, [255 0 0 255]);
+            Vpos(counter)=Vstart-round(dialScale*newRating)
+            if counter>1
+                Hpos(counter,1)=Hpos(counter-1)+1;
+                Screen('DrawDots', win, [(Hpos(1:counter-1))'; (Vpos(1:counter-1))'], 10, [255 0 0 255]);
+            end
             %draw new data point with Fuchsia:
             Screen('DrawDots', win, [Hpos(counter) Vpos(counter)], 10, [255 0 255 255]);
             
-            %enter results in matrix
-            results(counter,:) = [subID, 666, counter, rating(counter)];
-
             % Update display:
             Screen('Flip', win);
         end
 
     end
 
-    telapsed = GetSecs - t1;
-    fprintf('Elapsed time %f seconds, for %i frames. Average framerate %f fps.\n', telapsed, i, i / telapsed);
+    %% Write result matrix to comma delimited text file
+    writematrix(result,fileName);
+
+    %TODO: display thank you and performance feedback
+    DrawFormattedText(win, 'Thank you for participating!\n\nPress any key to exit.', 'center', 'center');
+    Screen('Flip', win);
+    KbWait([], 2); %wait for keystroke
 
     Screen('Flip', win);
     KbReleaseWait;
 
-    % Close movie object:
-    Screen('CloseMovie', movie);
-
     % Close any remaining movie objects
-    % Screen('CloseAll');
+    Screen('CloseAll');
+
+
+    telapsed = GetSecs - t1;
+    fprintf('Elapsed time %f seconds, for %i frames. Average framerate %f fps.\n', telapsed, i, i / telapsed);
+
 
     clear mex
-
-
-    %% Write results to comma delimited text file (use '\t' for tabs)
-    dlmwrite(fileName, results, 'delimiter', ',');
-
-    %TODO: display thank you and performance feedback
-    % DrawFormattedText(expWin, ['Thank you for participating!'], 'center', 'center');
-    % Screen('Flip', expWin);
-    % KbWait([], 2); %wait for keystroke
 
     %clean up before exit
     ShowCursor;
@@ -311,13 +290,14 @@ try
     %return to olddebuglevel
     % Screen('Preference', 'VisualDebuglevel', olddebuglevel);
 
-catch
+catch ME
     % This section is executed only in case an error happens in the
     % experiment code implemented between try and catch...
+    Screen('CloseAll');
     ShowCursor;
     sca; %or sca
     ListenChar(0);
     % Screen('Preference', 'VisualDebuglevel', olddebuglevel);
-    %output the error message
-    psychrethrow(psychlasterror);
+
+    rethrow(ME);
 end
