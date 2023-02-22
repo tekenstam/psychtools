@@ -186,11 +186,12 @@ try
         Hpos=ones(round(hz*movieduration),1); % initialize array
         Vpos=Hpos;
         
-        
+
+        lineWidth=5;
     %    Vbot=700;
         Vbot=h;
-        Vtop=Vbot-140;
-        Vstart=Vbot;
+        Vtop=Vbot-100-lineWidth-2;
+        Vstart=Vbot-lineWidth+1;
         Vpos(1)=Vstart;
         counter=1;
 
@@ -259,9 +260,8 @@ try
                 rating(counter)=1;
             end
             
-            lineWidth=5;
             Screen('DrawLine', win, [0 0 0 255], 1, Vtop-lineWidth, w, Vtop-lineWidth, lineWidth);
-            Screen('DrawLine', win, [0 0 0 255], 1, Vbot, w, Vbot, lineWidth);
+            Screen('DrawLine', win, [0 0 0 255], 1, Vbot-lineWidth, w, Vbot-lineWidth, lineWidth);
             
             Vpos(counter)=Vstart-round(dialScale*rating(counter))
             Hpos(counter,1)=Hpos(counter-1)+1;
@@ -296,10 +296,8 @@ try
     clear mex
 
 
-    %TODO: write results to comma delimited text file (use '\t' for tabs)
-    % dlmwrite(fileName, results, 'delimiter', ',', 'precision', 6);
+    %% Write results to comma delimited text file (use '\t' for tabs)
     dlmwrite(fileName, results, 'delimiter', ',');
-    %'precision','%.6f'
 
     %TODO: display thank you and performance feedback
     % DrawFormattedText(expWin, ['Thank you for participating!'], 'center', 'center');
