@@ -1,8 +1,11 @@
-function results = runMovieRating(subID)
+function result = runMovieRating(subID)
 %Video Stimulus Presentation Program
 
 % Make sure the script is running on Psychtoolbox-3:
 AssertOpenGL;
+
+clc;clear all;close all;
+Screen('Preference', 'SkipSyncTests', 0);
 
 %set default values for input arguments
 if ~exist('subID','var')
@@ -29,7 +32,6 @@ end
 %in a try ... catch ... end construct. This will often prevent you from getting stuck
 %in the PTB full screen mode
 try
-    clc;clear all;close all;
     Screen('CloseAll')
     rand('state',sum(100*clock));			% reset random number generator
     Screen('Screens');
@@ -191,8 +193,15 @@ try
         Vstart=Vbot;
         Vpos(1)=Vstart;
         counter=1;
+
+        rating(1)=0;
+
+        dialPos=0;
+        oldPos=0;
+
         % Infinite playback loop: Fetch video frames and display them...
         while 1
+
             counter=counter+1;
             % Check for abortion:
             abortit=0;
@@ -237,23 +246,35 @@ try
                     end
                 end
             end
+
+            diffPos = oldPos - dialPos;
+            oldPos = dialPos;
+
+            rating(counter) = rating(counter-1) - diffPos;
+
+            %Make rating a value between 0-9
+            if rating(counter)>10
+                rating(counter)=10;
+            elseif rating(counter)<1
+                rating(counter)=1;
+            end
             
             lineWidth=5;
             Screen('DrawLine', win, [0 0 0 255], 1, Vtop-lineWidth, w, Vtop-lineWidth, lineWidth);
-            Screen('DrawLine', win, [0 0 0 255], 1, Vbot-lineWidth, w, Vbot-lineWidth, lineWidth);
+            Screen('DrawLine', win, [0 0 0 255], 1, Vbot, w, Vbot, lineWidth);
             
-            Vpos(counter)=Vstart+round(dialScale*dialPos);
-            if Vpos(counter)<Vtop
-                Vpos(counter)=Vtop;
-                dialPos=dialPos+1;
-            elseif Vpos(counter)>Vbot
-                Vpos(counter)=Vbot;
-                dialPos=dialPos-1;
-            end
+            Vpos(counter)=Vstart-round(dialScale*rating(counter))
             Hpos(counter,1)=Hpos(counter-1)+1;
+
+            %https://www.w3schools.com/colors/colors_picker.asp
+            %draw old data points with Red:
             Screen('DrawDots', win, [(Hpos(1:counter-1))'; (Vpos(1:counter-1))'], 10, [255 0 0 255]);
+            %draw new data point with Fuchsia:
             Screen('DrawDots', win, [Hpos(counter) Vpos(counter)], 10, [255 0 255 255]);
             
+            %enter results in matrix
+            results(counter,:) = [subID, 666, counter, rating(counter)];
+
             % Update display:
             Screen('Flip', win);
         end
@@ -277,6 +298,8 @@ try
 
     %TODO: write results to comma delimited text file (use '\t' for tabs)
     % dlmwrite(fileName, results, 'delimiter', ',', 'precision', 6);
+    dlmwrite(fileName, results, 'delimiter', ',');
+    %'precision','%.6f'
 
     %TODO: display thank you and performance feedback
     % DrawFormattedText(expWin, ['Thank you for participating!'], 'center', 'center');
