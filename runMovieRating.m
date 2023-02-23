@@ -4,35 +4,21 @@ function result = runMovieRating(subID)
 % Make sure the script is running on Psychtoolbox-3:
 AssertOpenGL;
 
-clc;clear all;close all;
-Screen('Preference', 'SkipSyncTests', 0);
+clear all;close all;
+
 
 %set default values for input arguments
 if ~exist('subID','var')
     subID=66;
 end
 
-%warn if duplicate sub ID
-fileName=['MovieRatingSubj' num2str(subID) '.txt'];
-if exist(fileName,'file')
-    if ~IsOctave
-        resp=questdlg({['the file ' fileName 'already exists']; 'do you want to overwrite it?'},...
-            'duplicate warning','cancel','ok','ok');
-    else
-        resp=input(['the file ' fileName ' already exists. do you want to overwrite it? [Type ok for overwrite]'], 's');
-    end
-    
-    if ~strcmp(resp,'ok') %abort experiment if overwriting was not confirmed
-        disp('experiment aborted')
-        return
-    end
-end
+dateSuffix=datetime("now",'Format','yyyyMMddHHmmss');
+fileName=strcat('MovieRating_Subj', num2str(subID), '_', string(dateSuffix), '.txt');
 
 %when working with the PTB it is a good idea to enclose the whole body of your program
 %in a try ... catch ... end construct. This will often prevent you from getting stuck
 %in the PTB full screen mode
 try
-    Screen('CloseAll')
     rand('state',sum(100*clock));			% reset random number generator
     Screen('Screens');
 
@@ -87,20 +73,14 @@ try
     %===========================================
     % Video parameters
 
-    indexisFrames=2;
-    toTime=100000;
-    fromTime=0;
-    indexisFrames = 0;
-    benchmark = 0;
-    async = [];
+    % Default preload setting:
     preloadSecs = [];
-    specialflags = [];
     pixelFormat = [];
     maxThreads = [];
     movieOptions = [];
 
     win = PsychImaging('OpenWindow', myscreen, [128, 128, 128]);
-    [ monitorFlipInterval nrValidSamples stddev ]=Screen('GetFlipInterval', win);
+    [monitorFlipInterval, nrValidSamples, stddev] = Screen('GetFlipInterval', win);
 
     hz=round(1/monitorFlipInterval);
 
@@ -116,8 +96,6 @@ try
     % Use blocking wait for new frames by default:
     blocking = 1;
 
-    % Default preload setting:
-    preloadsecs = [];
     % Playbackrate defaults to 1:
     rate=1;
 
@@ -138,7 +116,7 @@ try
         % end
         
         % Open movie file and retrieve basic info about movie
-        [movie, movieduration, fps, imgw, imgh, ~, ~, hdrStaticMetaData] = Screen('OpenMovie', win, moviename, [], preloadsecs, [], pixelFormat, maxThreads, movieOptions);
+        [movie, movieduration, fps, imgw, imgh, ~, ~, hdrStaticMetaData] = Screen('OpenMovie', win, moviename, [], preloadSecs, [], pixelFormat, maxThreads, movieOptions);
         fprintf('Movie: %s  : %f seconds duration, %f fps, w x h = %i x %i...\n', moviename, movieduration, fps, imgw, imgh);
         if imgw > w || imgh > h
             % Video frames too big to fit into window, so define size to be window size:
@@ -164,7 +142,7 @@ try
         
         Hpos=ones(round(hz*movieduration),1); % initialize array
         Vpos=Hpos;
-        result=zeros(round(hz*movieduration),4); % initialize 4-column array;
+        result=zeros(round(hz*movieduration),5); % initialize 4-column array;
         
 
         lineWidth=5;
@@ -202,6 +180,7 @@ try
                 if tex < 0
                     % No, and there won't be any in the future, due to some
                     % error. Abort playback loop:
+                    abortit=2;
                     break;
                 end
                 
@@ -230,7 +209,7 @@ try
             if counter==1
                 newRating=0;
             else
-                newRating = result(counter-1, 4) - diffPos;
+                newRating = result(counter-1, 5) - diffPos;
             end
 
             %Make newRating a value between 1-10
@@ -240,15 +219,15 @@ try
                 newRating=1;
             end
 
-            %enter result in matrix
-            result(counter,:) = [subID, 666, counter, newRating];
+            % %enter result in matrix
+            % result(counter,:) = [subID, 666, "now", counter, newRating];
             
             Screen('DrawLine', win, [0 0 0 255], 0, Vtop-lineWidth, w, Vtop-lineWidth, lineWidth);
             Screen('DrawLine', win, [0 0 0 255], 0, Vbot-lineWidth, w, Vbot-lineWidth, lineWidth);
             
             %https://www.w3schools.com/colors/colors_picker.asp
             %draw old data points with Red:
-            Vpos(counter)=Vstart-round(dialScale*newRating)
+            Vpos(counter)=Vstart-round(dialScale*newRating);
             if counter>1
                 Hpos(counter,1)=Hpos(counter-1)+1;
                 Screen('DrawDots', win, [(Hpos(1:counter-1))'; (Vpos(1:counter-1))'], 10, [255 0 0 255]);
@@ -256,14 +235,28 @@ try
             %draw new data point with Fuchsia:
             Screen('DrawDots', win, [Hpos(counter) Vpos(counter)], 10, [255 0 255 255]);
             
-            % Update display:
-            Screen('Flip', win);
-        end
+            % Update display and close the movie frame texture:
+            [~, StimulusOnsetTime, ~, ~, ~] = Screen('Flip', win);
+            Screen('Close', tex)
+
+            %enter result in matrix
+            result(counter,:) = [subID, 666, StimulusOnsetTime, counter, newRating];
+            
+            end
+
+        fprintf('Movie displayed after %i interations.', counter);
+
+        % Close the movie object
+        Screen('CloseMovie', movie);
+
+        %% Append result matrix to comma delimited text file after each movie
+        %Tried our best but didn't collect all the data we expected (one per display HZ)
+        %Truncate unused rows in the result matrix: 
+        result(counter:end,:) = [];
+        writematrix(result,fileName,'WriteMode','append');
 
     end
 
-    %% Write result matrix to comma delimited text file
-    writematrix(result,fileName);
 
     %TODO: display thank you and performance feedback
     DrawFormattedText(win, 'Thank you for participating!\n\nPress any key to exit.', 'center', 'center');
@@ -276,12 +269,8 @@ try
     % Close any remaining movie objects
     Screen('CloseAll');
 
-
     telapsed = GetSecs - t1;
     fprintf('Elapsed time %f seconds, for %i frames. Average framerate %f fps.\n', telapsed, i, i / telapsed);
-
-
-    clear mex
 
     %clean up before exit
     ShowCursor;
