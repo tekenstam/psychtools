@@ -56,10 +56,6 @@ try
         powerMateExists=0;
     end
 
-    moviename=[myexpt 'TM - Angry.mov'];
-
-    fprintf('Loading movie %s ...\n', moviename);
-
     % Background color will be a grey one:
     background=[128, 128, 128];
     myscreen=max(Screen('Screens'));
@@ -91,7 +87,6 @@ try
     shader = [];
 
     Screen('Flip',win);
-    abortit = 0;
 
     % Use blocking wait for new frames by default:
     blocking = 1;
@@ -100,165 +95,194 @@ try
     rate=1;
 
     % Choose 16 pixel text size:
-    Screen('TextSize', win, 16);
+    Screen('TextSize', win, 32);
 
     %===========================================
 
-    while (abortit<2)
-        
-        % Show title while movie is loading/prerolling:
-        DrawFormattedText(win, ['Loading ...\n' moviename], 'center', 'center', 0, 40);
+
+    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+    %% Set up stimuli lists and results file
+    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+    emotionList = ["Disgust","Fear","Happy", "Sad"];
+    nEmotions = length(emotionList);
+    % Randomize the emotion list
+    randomizedEmotions = randperm(nEmotions);
+
+    for emotion = randomizedEmotions
+        %% Display thank you and performance feedback
+        DrawFormattedText(win, sprintf('Use the dial to rate the amount of "%s" emotion displayed in the movie.\n\nPress any key to continue...', emotionList{emotion}), 'center', 'center');
         Screen('Flip', win);
-        
-        % Close previously open movie
-        % if movie
-        %     Screen('CloseMovie', movie);
-        % end
-        
-        % Open movie file and retrieve basic info about movie
-        [movie, movieduration, fps, imgw, imgh, ~, ~, hdrStaticMetaData] = Screen('OpenMovie', win, moviename, [], preloadSecs, [], pixelFormat, maxThreads, movieOptions);
-        fprintf('Movie: %s  : %f seconds duration, %f fps, w x h = %i x %i...\n', moviename, movieduration, fps, imgw, imgh);
-        if imgw > w || imgh > h
-            % Video frames too big to fit into window, so define size to be window size:
-            dstRect = CenterRect((w / imgw) * [0, 0, imgw, imgh], Screen('Rect', win));
-        else
-            %dstRect = [w/2, 2/2, imgw, imgh];
-            [dstRect,dh,dv] = CenterRect([0 0 imgw imgh],[0 0 w h]);
-            offset=dstRect(2)-round(dstRect(2)*.2);
-            dstRect=[dstRect(1) dstRect(2)-offset dstRect(3) dstRect(4)-offset];
-        end
-        
-        
-        % Start playback of movie. This will start
-        % the realtime playback clock and playback of audio tracks, if any.
-        % Play 'movie', at a playbackrate = 1, with endless loop=1 and
-        % 1.0 == 100% audio volume.
-        
-        Screen('PlayMovie', movie, rate, 0, 1.0);
-        
-        t1 = GetSecs;
-        dialPos=0;
-        dialScale=10;
-        
-        Hpos=ones(round(hz*movieduration),1); % initialize array
-        Vpos=Hpos;
-        result=zeros(round(hz*movieduration),5); % initialize 4-column array;
-        
+        KbWait([], 2); %wait for keystroke
 
-        lineWidth=5;
-        Vbot=h;
-        Vtop=Vbot-100-lineWidth-2;
-        Vstart=Vbot-lineWidth+1;
-        Vpos(1)=Vstart;
-        counter=0;
+        % Get the image files for the experiment
+        movieFolder=[myexpt emotionList{emotion}];
 
-        dialPos=0;
-        oldPos=0;
+        movieList = dir(fullfile(movieFolder,'*.mov'));
+        movieList = {movieList(:).name};
+        nTrials = length(movieList);
 
-        % Infinite playback loop: Fetch video frames and display them...
-        while 1
 
-            counter=counter+1;
-            % Check for abortion:
-            abortit=0;
-            [keyIsDown, ~, keyCode] = KbCheck(-1);
-            if (keyIsDown==1 && keyCode(esc))
-                % Set the abort-demo flag.
-                abortit=2;
-                break;
+        % % Set up the output file
+        % resultsFolder = 'results';
+        % outputfile = fopen([resultsFolder '/resultfile_' num2str(subID) '.txt'],'a');
+        % fprintf(outputfile, 'subID\t imageCondition\t trial\t textItem\t imageFile1\t imageFile2\t response\t RT\n');
+
+        % Randomize the trial list
+        randomizedTrials = randperm(nTrials);
+
+
+
+        for trial = randomizedTrials
+            
+            moviePath = [movieFolder '/' movieList{trial}];
+            fprintf('Loading movie %s ...\n', moviePath);
+
+            % Show title while movie is loading/prerolling:
+            DrawFormattedText(win, 'Loading next movie...\n', 'center', 'center', 0);
+            Screen('Flip', win);
+                    
+            % Open movie file and retrieve basic info about movie
+            [movie, movieduration, fps, imgw, imgh, ~, ~, hdrStaticMetaData] = Screen('OpenMovie', win, moviePath, [], preloadSecs, [], pixelFormat, maxThreads, movieOptions);
+            fprintf('Movie: %s  : %f seconds duration, %f fps, w x h = %i x %i...\n', moviePath, movieduration, fps, imgw, imgh);
+            if imgw > w || imgh > h
+                % Video frames too big to fit into window, so define size to be window size:
+                dstRect = CenterRect((w / imgw) * [0, 0, imgw, imgh], Screen('Rect', win));
+            else
+                %dstRect = [w/2, 2/2, imgw, imgh];
+                [dstRect,dh,dv] = CenterRect([0 0 imgw imgh],[0 0 w h]);
+                offset=dstRect(2)-round(dstRect(2)*.2);
+                dstRect=[dstRect(1) dstRect(2)-offset dstRect(3) dstRect(4)-offset];
             end
             
-            if ((abs(rate)>0) && (imgw>0) && (imgh>0))
-                % Return next frame in movie, in sync with current playback
-                % time and sound.
-                % tex is either the positive texture handle or zero if no
-                % new frame is ready yet in non-blocking mode (blocking == 0).
-                % It is -1 if something went wrong and playback needs to be stopped:
-                tex = Screen('GetMovieImage', win, movie, blocking);
-                
-                % Valid texture returned?
-                if tex < 0
-                    % No, and there won't be any in the future, due to some
-                    % error. Abort playback loop:
+            
+            % Start playback of movie. This will start
+            % the realtime playback clock and playback of audio tracks, if any.
+            % Play 'movie', at a playbackrate = 1, with endless loop=1 and
+            % 1.0 == 100% audio volume.
+            
+            Screen('PlayMovie', movie, rate, 0, 1.0);
+            
+            t1 = GetSecs;
+            
+            Hpos=ones(round(hz*movieduration),1); % initialize array
+            Vpos=Hpos;
+            result=zeros(round(hz*movieduration),5); % initialize 5-column array;
+            
+
+            lineWidth=5;
+            Vbot=h;
+            Vtop=Vbot-100-lineWidth-2;
+            Vstart=Vbot-lineWidth+1;
+            Vpos(1)=Vstart;
+            counter=0;
+
+            dialScale=10;
+            dialPos=0;
+            oldPos=0;
+
+            % Infinite playback loop: Fetch video frames and display them...
+            while 1
+
+                counter=counter+1;
+                % Check for abortion:
+                abortit=0;
+                [keyIsDown, ~, keyCode] = KbCheck(-1);
+                if (keyIsDown==1 && keyCode(esc))
+                    % Set the abort-demo flag.
                     abortit=2;
                     break;
                 end
                 
-                % Draw the new texture immediately to screen:
-                Screen('DrawTexture', win, tex, [], dstRect, [], [], [], [], shader);
-            end
-            
-            if powerMateExists
-                [button, dialPos] = PsychPowerMate('Get', handle);
-            else
-                [keyIsDown, ~, keyCode] = KbCheck(keyboardIndex);
-                %[keyIsDown, ~, keyCode] = KbCheck(-1);
+                if ((abs(rate)>0) && (imgw>0) && (imgh>0))
+                    % Return next frame in movie, in sync with current playback
+                    % time and sound.
+                    % tex is either the positive texture handle or zero if no
+                    % new frame is ready yet in non-blocking mode (blocking == 0).
+                    % It is -1 if something went wrong and playback needs to be stopped:
+                    tex = Screen('GetMovieImage', win, movie, blocking);
+                    
+                    % Valid texture returned?
+                    if tex < 0
+                        % No, and there won't be any in the future, due to some
+                        % error. Abort playback loop:
+                        abortit=2;
+                        break;
+                    end
+                    
+                    % Draw the new texture immediately to screen:
+                    Screen('DrawTexture', win, tex, [], dstRect, [], [], [], [], shader);
+                end
                 
-                if keyIsDown
-                    if keyCode(up)
-                        dialPos=dialPos-1;
-                    elseif keyCode(down)
-                        dialPos=dialPos+1;
+                if powerMateExists
+                    [button, dialPos] = PsychPowerMate('Get', handle);
+                else
+                    [keyIsDown, ~, keyCode] = KbCheck(keyboardIndex);
+                    %[keyIsDown, ~, keyCode] = KbCheck(-1);
+                    
+                    if keyIsDown
+                        if keyCode(up)
+                            dialPos=dialPos-1;
+                        elseif keyCode(down)
+                            dialPos=dialPos+1;
+                        end
                     end
                 end
+
+                %% Use currrent dial position relative to old dial position to adjust rating
+                diffPos = oldPos - dialPos;
+                oldPos = dialPos;
+                if counter==1
+                    newRating=0;
+                else
+                    newRating = result(counter-1, 5) - diffPos;
+                end
+
+                %Make newRating a value between 1-10
+                if newRating>10
+                    newRating=10;
+                elseif newRating<1
+                    newRating=1;
+                end
+                
+                Screen('DrawLine', win, [0 0 0 255], 0, Vtop-lineWidth, w, Vtop-lineWidth, lineWidth);
+                Screen('DrawLine', win, [0 0 0 255], 0, Vbot-lineWidth, w, Vbot-lineWidth, lineWidth);
+                
+                %https://www.w3schools.com/colors/colors_picker.asp
+                %draw old data points with Red:
+                Vpos(counter)=Vstart-round(dialScale*newRating);
+                if counter>1
+                    Hpos(counter,1)=Hpos(counter-1)+1;
+                    Screen('DrawDots', win, [(Hpos(1:counter-1))'; (Vpos(1:counter-1))'], 10, [255 0 0 255]);
+                end
+                %draw new data point with Fuchsia:
+                Screen('DrawDots', win, [Hpos(counter) Vpos(counter)], 10, [255 0 255 255]);
+                
+                % Update display and close the movie frame texture:
+                [~, StimulusOnsetTime, ~, ~, ~] = Screen('Flip', win);
+                Screen('Close', tex)
+
+                %enter result in matrix
+                result(counter,:) = [subID, trial, StimulusOnsetTime, counter, newRating];
+                
             end
 
-            %% Use currrent dial position relative to old dial position to adjust rating
-            diffPos = oldPos - dialPos;
-            oldPos = dialPos;
-            if counter==1
-                newRating=0;
-            else
-                newRating = result(counter-1, 5) - diffPos;
-            end
+            fprintf('Movie displayed after %i interations.\n', counter);
 
-            %Make newRating a value between 1-10
-            if newRating>10
-                newRating=10;
-            elseif newRating<1
-                newRating=1;
-            end
+            % Close the movie object
+            Screen('CloseMovie', movie);
 
-            % %enter result in matrix
-            % result(counter,:) = [subID, 666, "now", counter, newRating];
-            
-            Screen('DrawLine', win, [0 0 0 255], 0, Vtop-lineWidth, w, Vtop-lineWidth, lineWidth);
-            Screen('DrawLine', win, [0 0 0 255], 0, Vbot-lineWidth, w, Vbot-lineWidth, lineWidth);
-            
-            %https://www.w3schools.com/colors/colors_picker.asp
-            %draw old data points with Red:
-            Vpos(counter)=Vstart-round(dialScale*newRating);
-            if counter>1
-                Hpos(counter,1)=Hpos(counter-1)+1;
-                Screen('DrawDots', win, [(Hpos(1:counter-1))'; (Vpos(1:counter-1))'], 10, [255 0 0 255]);
-            end
-            %draw new data point with Fuchsia:
-            Screen('DrawDots', win, [Hpos(counter) Vpos(counter)], 10, [255 0 255 255]);
-            
-            % Update display and close the movie frame texture:
-            [~, StimulusOnsetTime, ~, ~, ~] = Screen('Flip', win);
-            Screen('Close', tex)
+            %% Append result matrix to comma delimited text file after each movie
+            %Tried our best but didn't collect all the data we expected (one per display HZ)
+            %Truncate unused rows in the result matrix: 
+            result(counter:end,:) = [];
+            writematrix(result,fileName,'WriteMode','append');
 
-            %enter result in matrix
-            result(counter,:) = [subID, 666, StimulusOnsetTime, counter, newRating];
-            
-            end
-
-        fprintf('Movie displayed after %i interations.', counter);
-
-        % Close the movie object
-        Screen('CloseMovie', movie);
-
-        %% Append result matrix to comma delimited text file after each movie
-        %Tried our best but didn't collect all the data we expected (one per display HZ)
-        %Truncate unused rows in the result matrix: 
-        result(counter:end,:) = [];
-        writematrix(result,fileName,'WriteMode','append');
-
+        end
     end
 
 
-    %TODO: display thank you and performance feedback
+    %% Display thank you and performance feedback
     DrawFormattedText(win, 'Thank you for participating!\n\nPress any key to exit.', 'center', 'center');
     Screen('Flip', win);
     KbWait([], 2); %wait for keystroke
