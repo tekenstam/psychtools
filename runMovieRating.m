@@ -19,7 +19,7 @@ fileName=strcat('MovieRating_Subj', num2str(subID), '_', string(dateSuffix), '.t
 %in a try ... catch ... end construct. This will often prevent you from getting stuck
 %in the PTB full screen mode
 try
-    rand('state',sum(100*clock));			% reset random number generator
+    rng('shuffle');			% reset random number generator
     Screen('Screens');
 
     % Add a computer to the list by indicating where the cyberballrace folder is located.
@@ -76,7 +76,7 @@ try
     movieOptions = [];
 
     win = PsychImaging('OpenWindow', myscreen, [128, 128, 128]);
-    [monitorFlipInterval, nrValidSamples, stddev] = Screen('GetFlipInterval', win);
+    [monitorFlipInterval, ~, ~] = Screen('GetFlipInterval', win);
 
     hz=round(1/monitorFlipInterval);
 
@@ -104,7 +104,9 @@ try
     %% Set up stimuli lists and results file
     %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
+    % emotionList = ["Disgust","Fear","Happy", "Sad"];
     emotionList = ["Disgust","Fear","Happy", "Sad"];
+    % emotionList = ["Fear"];
     nEmotions = length(emotionList);
     % Randomize the emotion list
     randomizedEmotions = randperm(nEmotions);
@@ -143,14 +145,14 @@ try
             Screen('Flip', win);
                     
             % Open movie file and retrieve basic info about movie
-            [movie, movieduration, fps, imgw, imgh, ~, ~, hdrStaticMetaData] = Screen('OpenMovie', win, moviePath, [], preloadSecs, [], pixelFormat, maxThreads, movieOptions);
+            [movie, movieduration, fps, imgw, imgh, ~, ~, ~] = Screen('OpenMovie', win, moviePath, [], preloadSecs, [], pixelFormat, maxThreads, movieOptions);
             fprintf('Movie: %s  : %f seconds duration, %f fps, w x h = %i x %i...\n', moviePath, movieduration, fps, imgw, imgh);
             if imgw > w || imgh > h
                 % Video frames too big to fit into window, so define size to be window size:
                 dstRect = CenterRect((w / imgw) * [0, 0, imgw, imgh], Screen('Rect', win));
             else
                 %dstRect = [w/2, 2/2, imgw, imgh];
-                [dstRect,dh,dv] = CenterRect([0 0 imgw imgh],[0 0 w h]);
+                [dstRect, ~, ~] = CenterRect([0 0 imgw imgh],[0 0 w h]);
                 offset=dstRect(2)-round(dstRect(2)*.2);
                 dstRect=[dstRect(1) dstRect(2)-offset dstRect(3) dstRect(4)-offset];
             end
@@ -165,21 +167,22 @@ try
             
             t1 = GetSecs;
             
-            Hpos=ones(round(hz*movieduration),1); % initialize array
-            Vpos=Hpos;
             result=zeros(round(hz*movieduration),5); % initialize 5-column array;
             
+            maxRating=10;
+            dialPos=0;
+            oldPos=0;
+
+            dotSize=10;
+            maxDots=round(w/2);
 
             lineWidth=5;
             Vbot=h;
-            Vtop=Vbot-100-lineWidth-2;
             Vstart=Vbot-lineWidth+1;
-            Vpos(1)=Vstart;
+            Vtop=Vbot-(maxRating*dotSize)-lineWidth-2;
+
             counter=0;
 
-            dialScale=10;
-            dialPos=0;
-            oldPos=0;
 
             % Infinite playback loop: Fetch video frames and display them...
             while 1
@@ -215,7 +218,7 @@ try
                 end
                 
                 if powerMateExists
-                    [button, dialPos] = PsychPowerMate('Get', handle);
+                    [~, dialPos] = PsychPowerMate('Get', handle);
                 else
                     [keyIsDown, ~, keyCode] = KbCheck(keyboardIndex);
                     %[keyIsDown, ~, keyCode] = KbCheck(-1);
@@ -233,31 +236,54 @@ try
                 diffPos = oldPos - dialPos;
                 oldPos = dialPos;
                 if counter==1
-                    newRating=0;
+                    newRating=1;
                 else
-                    newRating = result(counter-1, 5) - diffPos;
+                    % Adding diffPos makes turning knob to left increase the rating
+                    % and to the right decreases the rating. Substracting diffPos
+                    % reverses this. This is kinda like the "Natural scrolling"
+                    % mouse setting on Max OS.
+                    newRating = result(counter-1, 5) + diffPos;
                 end
 
                 %Make newRating a value between 1-10
-                if newRating>10
-                    newRating=10;
+                if newRating>maxRating
+                    newRating=maxRating;
                 elseif newRating<1
                     newRating=1;
                 end
+
+                if powerMateExists
+                    PsychPowerMate('SetBrightness', handle, round(newRating*(255/maxRating)));
+                end
+
                 
                 Screen('DrawLine', win, [0 0 0 255], 0, Vtop-lineWidth, w, Vtop-lineWidth, lineWidth);
                 Screen('DrawLine', win, [0 0 0 255], 0, Vbot-lineWidth, w, Vbot-lineWidth, lineWidth);
                 
-                %https://www.w3schools.com/colors/colors_picker.asp
-                %draw old data points with Red:
-                Vpos(counter)=Vstart-round(dialScale*newRating);
                 if counter>1
-                    Hpos(counter,1)=Hpos(counter-1)+1;
-                    Screen('DrawDots', win, [(Hpos(1:counter-1))'; (Vpos(1:counter-1))'], 10, [255 0 0 255]);
+                    % Generate monotonically incrementing xCords for each 'old' rating.
+                    % Value series ends at the center of the screen. This is how the
+                    % rating feedback graph starts in the center and shifts to the left.
+                    temp = (maxDots-counter+1:1:maxDots-1);
+                    xCords = reshape(temp,[length(temp),1]);
+
+                    % Create yCords scaled based on the rating.
+                    % First, extract the 5th column from the results matrix (temp1)
+                    % Next, scale results by dotSize (temp2)
+                    % Finally, generate yCords for dot placement based on desired screen placement (yCords)
+                    temp1 = result(1:length(xCords),5);
+                    temp2 = temp1(:,:,1)*dotSize;
+                    yCords = Vstart-temp2(:,:,1);
+
+                    %https://www.w3schools.com/colors/colors_picker.asp
+                    %draw old data points with Red (255,0,0):
+                    Screen('DrawDots', win, [(xCords)'; (yCords)'], 10, [255 0 0 255]);
+
                 end
-                %draw new data point with Fuchsia:
-                Screen('DrawDots', win, [Hpos(counter) Vpos(counter)], 10, [255 0 255 255]);
-                
+                %draw new data point with Fuchsia (255,0,255):
+                ratingCord=Vstart-round(dotSize*newRating);
+                Screen('DrawDots', win, [maxDots ratingCord], dotSize, [255 0 255 255]);
+
                 % Update display and close the movie frame texture:
                 [~, StimulusOnsetTime, ~, ~, ~] = Screen('Flip', win);
                 Screen('Close', tex)
@@ -280,7 +306,6 @@ try
 
         end
     end
-
 
     %% Display thank you and performance feedback
     DrawFormattedText(win, 'Thank you for participating!\n\nPress any key to exit.', 'center', 'center');
