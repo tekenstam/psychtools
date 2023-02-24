@@ -4,13 +4,13 @@ function result = runMovieRating(subID)
 % Make sure the script is running on Psychtoolbox-3:
 AssertOpenGL;
 
-clear all;close all;
+% clear all;close all;
 
 
-%set default values for input arguments
-if ~exist('subID','var')
-    subID=66;
-end
+% %set default values for input arguments
+% if ~exist('subID','var')
+%     subID=66;
+% end
 
 dateSuffix=datetime("now",'Format','yyyyMMddHHmmss');
 fileName=strcat('MovieRating_Subj', num2str(subID), '_', string(dateSuffix), '.txt');
