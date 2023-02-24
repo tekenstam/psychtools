@@ -1,19 +1,19 @@
 function result = runMovieRating(subID)
 %Video Stimulus Presentation Program
 
-% Make sure the script is running on Psychtoolbox-3:
-AssertOpenGL;
-
+%% Uncomment this if needed (for testing only!)
 % clear all;close all;
 
+% Make sure the script is running on Psychtoolbox-3 (PTB):
+AssertOpenGL;
 
-% %set default values for input arguments
-% if ~exist('subID','var')
-%     subID=66;
-% end
+%set default values for input arguments (for testing only!)
+if ~exist('subID','var')
+    subID=999999;
+end
 
 dateSuffix=datetime("now",'Format','yyyyMMddHHmmss');
-fileName=strcat('MovieRating_Subj', num2str(subID), '_', string(dateSuffix), '.txt');
+fileName=strcat('MovieRating_Subj-', num2str(subID), '_', string(dateSuffix), '.txt');
 
 %when working with the PTB it is a good idea to enclose the whole body of your program
 %in a try ... catch ... end construct. This will often prevent you from getting stuck
