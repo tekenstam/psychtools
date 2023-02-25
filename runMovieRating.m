@@ -12,8 +12,8 @@ if ~exist('subID','var')
     subID=999999;
 end
 
-dateSuffix=datetime("now",'Format','yyyyMMddHHmmss');
-fileName=strcat('MovieRating_Subj-', num2str(subID), '_', string(dateSuffix), '.txt');
+%used later for results filename
+experimentStart=datetime("now",'Format','yyyyMMddHHmmss');
 
 %when working with the PTB it is a good idea to enclose the whole body of your program
 %in a try ... catch ... end construct. This will often prevent you from getting stuck
@@ -104,39 +104,41 @@ try
     %% Set up stimuli lists and results file
     %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-    % emotionList = ["Disgust","Fear","Happy", "Sad"];
-    emotionList = ["Disgust","Fear","Happy", "Sad"];
-    % emotionList = ["Fear"];
-    nEmotions = length(emotionList);
-    % Randomize the emotion list
-    randomizedEmotions = randperm(nEmotions);
+    groupList = ["disgust","fear","happy", "sad"];
+    numGroups = length(groupList);
+    % Randomize the group list
+    randomizedGroups = randperm(numGroups);
 
-    for emotion = randomizedEmotions
+    for group = randomizedGroups
         %% Display thank you and performance feedback
-        DrawFormattedText(win, sprintf('Use the dial to rate the amount of "%s" emotion displayed in the movie.\n\nPress any key to continue...', emotionList{emotion}), 'center', 'center');
+        DrawFormattedText(win, sprintf('Use the dial to rate the amount of "%s" emotion displayed in the movie.\n\nPress any key to continue...', groupList{group}), 'center', 'center');
         Screen('Flip', win);
         KbWait([], 2); %wait for keystroke
 
         % Get the image files for the experiment
-        movieFolder=[myexpt emotionList{emotion}];
+        movieFolder=[myexpt groupList{group}];
 
         movieList = dir(fullfile(movieFolder,'*.mov'));
         movieList = {movieList(:).name};
-        nTrials = length(movieList);
-
-
-        % % Set up the output file
-        % resultsFolder = 'results';
-        % outputfile = fopen([resultsFolder '/resultfile_' num2str(subID) '.txt'],'a');
-        % fprintf(outputfile, 'subID\t imageCondition\t trial\t textItem\t imageFile1\t imageFile2\t response\t RT\n');
+        numTrials = length(movieList);
 
         % Randomize the trial list
-        randomizedTrials = randperm(nTrials);
+        randomizedTrials = randperm(numTrials);
 
 
 
         for trial = randomizedTrials
             
+            resultsFolder = strcat('results','/',num2str(subID),'/',string(experimentStart));
+
+            if ~exist(resultsFolder, 'dir')
+                % Folder does not exist so create it.
+                mkdir(resultsFolder);
+            end
+
+            [~,trialBaseName,~] = fileparts(movieList{trial});
+            resultsFilename=strcat(resultsFolder, '/', 'resultfile_', num2str(subID), '_', '_', groupList{group}, '_', trialBaseName, '.csv');
+
             moviePath = [movieFolder '/' movieList{trial}];
             fprintf('Loading movie %s ...\n', moviePath);
 
@@ -156,7 +158,6 @@ try
                 offset=dstRect(2)-round(dstRect(2)*.2);
                 dstRect=[dstRect(1) dstRect(2)-offset dstRect(3) dstRect(4)-offset];
             end
-            
             
             % Start playback of movie. This will start
             % the realtime playback clock and playback of audio tracks, if any.
@@ -182,7 +183,6 @@ try
             Vtop=Vbot-(maxRating*dotSize)-lineWidth-2;
 
             counter=0;
-
 
             % Infinite playback loop: Fetch video frames and display them...
             while 1
@@ -293,16 +293,22 @@ try
                 
             end
 
-            fprintf('Movie displayed after %i interations.\n', counter);
-
             % Close the movie object
             Screen('CloseMovie', movie);
 
+
+            %%
             %% Append result matrix to comma delimited text file after each movie
-            %Tried our best but didn't collect all the data we expected (one per display HZ)
-            %Truncate unused rows in the result matrix: 
+            %%
+
+            %truncate unused rows in the result matrix: 
             result(counter:end,:) = [];
-            writematrix(result,fileName,'WriteMode','append');
+
+            %TODO: add cells for group name and trial name
+
+            %write header row for results file
+            writecell({'subID','trial','time','counter','rating'},resultsFilename)
+            writematrix(result,resultsFilename,'WriteMode','append');
 
         end
     end
