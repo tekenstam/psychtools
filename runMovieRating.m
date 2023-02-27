@@ -7,10 +7,10 @@ function result = runMovieRating(subID)
 % Make sure the script is running on Psychtoolbox-3 (PTB):
 AssertOpenGL;
 
-%set default values for input arguments (for testing only!)
-if ~exist('subID','var')
-    subID=999999;
-end
+%%
+%% Load settings for experiment
+%%
+settingsMovieRating;
 
 %used later for results filename
 experimentStart=datetime("now",'Format','yyyyMMddHHmmss');
@@ -77,10 +77,10 @@ try
 
     win = PsychImaging('OpenWindow', myscreen, [128, 128, 128]);
     [monitorFlipInterval, ~, ~] = Screen('GetFlipInterval', win);
+    [winWidth, winHeight] = Screen('WindowSize', win);
 
     hz=round(1/monitorFlipInterval);
 
-    [w, h] = Screen('WindowSize', win);
     Screen('Blendfunction', win, GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     HideCursor(win);
 
@@ -104,8 +104,7 @@ try
     %% Set up stimuli lists and results file
     %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-    groupList = ["disgust","fear","happy", "sad"];
-    numGroups = length(groupList);
+    numGroups = length(groupList);     %#ok groupList is defined in settings file
     % Randomize the group list
     randomizedGroups = randperm(numGroups);
 
@@ -124,8 +123,6 @@ try
 
         % Randomize the trial list
         randomizedTrials = randperm(numTrials);
-
-
 
         for trial = randomizedTrials
             
@@ -149,12 +146,12 @@ try
             % Open movie file and retrieve basic info about movie
             [movie, movieduration, fps, imgw, imgh, ~, ~, ~] = Screen('OpenMovie', win, moviePath, [], preloadSecs, [], pixelFormat, maxThreads, movieOptions);
             fprintf('Movie: %s  : %f seconds duration, %f fps, w x h = %i x %i...\n', moviePath, movieduration, fps, imgw, imgh);
-            if imgw > w || imgh > h
+            if imgw > winWidth || imgh > winHeight
                 % Video frames too big to fit into window, so define size to be window size:
-                dstRect = CenterRect((w / imgw) * [0, 0, imgw, imgh], Screen('Rect', win));
+                dstRect = CenterRect((winWidth / imgw) * [0, 0, imgw, imgh], Screen('Rect', win));
             else
                 %dstRect = [w/2, 2/2, imgw, imgh];
-                [dstRect, ~, ~] = CenterRect([0 0 imgw imgh],[0 0 w h]);
+                [dstRect, ~, ~] = CenterRect([0 0 imgw imgh],[0 0 winWidth winHeight]);
                 offset=dstRect(2)-round(dstRect(2)*.2);
                 dstRect=[dstRect(1) dstRect(2)-offset dstRect(3) dstRect(4)-offset];
             end
@@ -170,17 +167,12 @@ try
             
             result=zeros(round(hz*movieduration),5); % initialize 5-column array;
             
-            maxRating=10;
+            %maxRating is defined in setting file
             dialPos=0;
             oldPos=0;
 
-            dotSize=10;
-            maxDots=round(w/2);
+            maxDots=round(winWidth/2);
 
-            lineWidth=5;
-            Vbot=h;
-            Vstart=Vbot-lineWidth+1;
-            Vtop=Vbot-(maxRating*dotSize)-lineWidth-2;
 
             counter=0;
 
@@ -248,17 +240,24 @@ try
                 %Make newRating a value between 1-10
                 if newRating>maxRating
                     newRating=maxRating;
-                elseif newRating<1
-                    newRating=1;
+                elseif newRating<minRating
+                    newRating=minRating;
                 end
 
                 if powerMateExists
                     PsychPowerMate('SetBrightness', handle, round(newRating*(255/maxRating)));
                 end
 
-                
-                Screen('DrawLine', win, [0 0 0 255], 0, Vtop-lineWidth, w, Vtop-lineWidth, lineWidth);
-                Screen('DrawLine', win, [0 0 0 255], 0, Vbot-lineWidth, w, Vbot-lineWidth, lineWidth);
+                displayBottomBuffer=(lineWidth*2)+(dotSize/2)+1;
+                displayTopBuffer=(lineWidth)+(dotSize/2)+1;
+                displayScaleFactor=(feedbackWindowHeight-displayBottomBuffer-displayTopBuffer)/(maxRating-minRating);
+
+                Vbot=winHeight;
+                Vstart=Vbot-displayBottomBuffer;
+                Vtop=Vbot-feedbackWindowHeight;
+
+                Screen('DrawLine', win, [0 0 0 255], 0, Vtop, winWidth, Vtop, lineWidth);
+                Screen('DrawLine', win, [0 0 0 255], 0, Vbot-lineWidth, winWidth, Vbot-lineWidth, lineWidth);
                 
                 if counter>1
                     % Generate monotonically incrementing xCords for each 'old' rating.
@@ -272,17 +271,16 @@ try
                     % Next, scale results by dotSize (temp2)
                     % Finally, generate yCords for dot placement based on desired screen placement (yCords)
                     temp1 = result(1:length(xCords),5);
-                    temp2 = temp1(:,:,1)*dotSize;
+                    temp2 = (temp1(:,:,1)-1)*displayScaleFactor;
                     yCords = Vstart-temp2(:,:,1);
 
-                    %https://www.w3schools.com/colors/colors_picker.asp
-                    %draw old data points with Red (255,0,0):
-                    Screen('DrawDots', win, [(xCords)'; (yCords)'], 10, [255 0 0 255]);
+                    %draw old data points:
+                    Screen('DrawDots', win, [(xCords)'; (yCords)'], dotSize, oldDotColor);
 
                 end
-                %draw new data point with Fuchsia (255,0,255):
-                ratingCord=Vstart-round(dotSize*newRating);
-                Screen('DrawDots', win, [maxDots ratingCord], dotSize, [255 0 255 255]);
+                %draw new data point:
+                ratingCord=Vstart-((newRating-1)*displayScaleFactor);
+                Screen('DrawDots', win, [maxDots ratingCord], dotSize, newDotColor);
 
                 % Update display and close the movie frame texture:
                 [~, StimulusOnsetTime, ~, ~, ~] = Screen('Flip', win);
