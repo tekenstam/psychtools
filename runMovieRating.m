@@ -12,9 +12,6 @@ AssertOpenGL;
 %%
 settingsMovieRating;
 
-%used later for results filename
-experimentStart=datetime("now",'Format','yyyyMMddHHmmss');
-
 %when working with the PTB it is a good idea to enclose the whole body of your program
 %in a try ... catch ... end construct. This will often prevent you from getting stuck
 %in the PTB full screen mode
@@ -22,19 +19,12 @@ try
     rng('shuffle');			% reset random number generator
     Screen('Screens');
 
-    % Add a computer to the list by indicating where the cyberballrace folder is located.
-    directoryList{1}='/Users/jackgrinband/Dropbox/expts/movie_rating/';
-    directoryList{2}='/Users/jack/Dropbox/expts/movie_rating/';
-    directoryList{3}='/Users/annika/Dropbox/expts/movie_rating/';
-    directoryList{4}='/Users/corelabuser/Dropbox/Stimuli/scripts/';
-    directoryList{5}='/Users/corelabuser/Dropbox/Stimuli/';
-
+    %add each directory that exists to the path
     for i=1:length(directoryList)
         if exist(directoryList{i},'dir')
             myexpt=directoryList{i};
         end
     end
-
     addpath(myexpt)
 
     %% Discover PowerMate dial and keyboard
@@ -79,6 +69,15 @@ try
     [monitorFlipInterval, ~, ~] = Screen('GetFlipInterval', win);
     [winWidth, winHeight] = Screen('WindowSize', win);
 
+    % Calculate feedback window parameters based on screen size
+    displayBottomBuffer=(lineWidth*2)+(dotSize/2)+1;
+    displayTopBuffer=(lineWidth)+(dotSize/2)+1;
+    displayScaleFactor=(feedbackWindowHeight-displayBottomBuffer-displayTopBuffer)/(maxRating-minRating);
+    Vstart=winHeight-displayBottomBuffer;
+    Vtop=winHeight-feedbackWindowHeight;
+    maxDots=round(winWidth/2);                   %number of dots that fit on half the screen
+
+
     hz=round(1/monitorFlipInterval);
 
     Screen('Blendfunction', win, GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
@@ -108,6 +107,13 @@ try
     % Randomize the group list
     randomizedGroups = randperm(numGroups);
 
+    experimentStart=datetime("now",'Format','yyyyMMddHHmmss');
+    resultsFolder = strcat('results','/',num2str(subID),'/',string(experimentStart));
+    if ~exist(resultsFolder, 'dir')
+        % Folder does not exist so create it.
+        mkdir(resultsFolder);
+    end
+
     for group = randomizedGroups
         %% Display thank you and performance feedback
         DrawFormattedText(win, sprintf('Use the dial to rate the amount of "%s" emotion displayed in the movie.\n\nPress any key to continue...', groupList{group}), 'center', 'center');
@@ -126,13 +132,6 @@ try
 
         for trial = randomizedTrials
             
-            resultsFolder = strcat('results','/',num2str(subID),'/',string(experimentStart));
-
-            if ~exist(resultsFolder, 'dir')
-                % Folder does not exist so create it.
-                mkdir(resultsFolder);
-            end
-
             [~,trialBaseName,~] = fileparts(movieList{trial});
             resultsFilename=strcat(resultsFolder, '/', 'resultfile_', num2str(subID), '_', '_', groupList{group}, '_', trialBaseName, '.csv');
 
@@ -150,7 +149,6 @@ try
                 % Video frames too big to fit into window, so define size to be window size:
                 dstRect = CenterRect((winWidth / imgw) * [0, 0, imgw, imgh], Screen('Rect', win));
             else
-                %dstRect = [w/2, 2/2, imgw, imgh];
                 [dstRect, ~, ~] = CenterRect([0 0 imgw imgh],[0 0 winWidth winHeight]);
                 offset=dstRect(2)-round(dstRect(2)*.2);
                 dstRect=[dstRect(1) dstRect(2)-offset dstRect(3) dstRect(4)-offset];
@@ -161,22 +159,17 @@ try
             % Play 'movie', at a playbackrate = 1, with endless loop=1 and
             % 1.0 == 100% audio volume.
             
-            Screen('PlayMovie', movie, rate, 0, 1.0);
+            Screen('PlayMovie', movie, rate, 0, soundvolume);
             
             t1 = GetSecs;
             
             result=zeros(round(hz*movieduration),5); % initialize 5-column array;
             
-            %maxRating is defined in setting file
             dialPos=0;
             oldPos=0;
 
-            maxDots=round(winWidth/2);
-
-
-            counter=0;
-
             % Infinite playback loop: Fetch video frames and display them...
+            counter=0;                           %number of frames displayed and datapoints collected
             while 1
 
                 counter=counter+1;
@@ -237,27 +230,15 @@ try
                     newRating = result(counter-1, 5) + diffPos;
                 end
 
-                %Make newRating a value between 1-10
-                if newRating>maxRating
+                %make newRating a value between min and max rating:
+                if newRating>maxRating           %maxRating is defined in setting file
                     newRating=maxRating;
-                elseif newRating<minRating
+                elseif newRating<minRating       %maxRating is defined in setting file
                     newRating=minRating;
                 end
 
-                if powerMateExists
-                    PsychPowerMate('SetBrightness', handle, round(newRating*(255/maxRating)));
-                end
-
-                displayBottomBuffer=(lineWidth*2)+(dotSize/2)+1;
-                displayTopBuffer=(lineWidth)+(dotSize/2)+1;
-                displayScaleFactor=(feedbackWindowHeight-displayBottomBuffer-displayTopBuffer)/(maxRating-minRating);
-
-                Vbot=winHeight;
-                Vstart=Vbot-displayBottomBuffer;
-                Vtop=Vbot-feedbackWindowHeight;
-
                 Screen('DrawLine', win, [0 0 0 255], 0, Vtop, winWidth, Vtop, lineWidth);
-                Screen('DrawLine', win, [0 0 0 255], 0, Vbot-lineWidth, winWidth, Vbot-lineWidth, lineWidth);
+                Screen('DrawLine', win, [0 0 0 255], 0, winHeight-lineWidth, winWidth, winHeight-lineWidth, lineWidth);
                 
                 if counter>1
                     % Generate monotonically incrementing xCords for each 'old' rating.
