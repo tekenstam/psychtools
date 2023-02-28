@@ -107,7 +107,7 @@ try
     % Randomize the group list
     randomizedGroups = randperm(numGroups);
 
-    experimentStart=datetime("now",'Format','yyyyMMddHHmmss');
+    experimentStart=datetime('now','Format','yyyyMMddHHmmss');
     resultsFolder = strcat('results','/',num2str(subID),'/',string(experimentStart));
     if ~exist(resultsFolder, 'dir')
         % Folder does not exist so create it.
@@ -225,7 +225,7 @@ try
                 else
                     % Adding diffPos makes turning knob to left increase the rating
                     % and to the right decreases the rating. Substracting diffPos
-                    % reverses this. This is kinda like the "Natural scrolling"
+                    % reverses this. This is kinda like the 'Natural scrolling'
                     % mouse setting on Max OS.
                     newRating = result(counter-1, 5) + diffPos;
                 end
