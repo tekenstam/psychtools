@@ -13,8 +13,8 @@ directoryList{5}='/Users/corelabuser/Dropbox/Stimuli/';
 
 %% Configure the groups of movie stimuli that the experiment will iterate through.
 %% Each group is a directory in the path containing movie files.
-% groupList = ["disgust","fear","happy","sad"];
-groupList = ["fear"];
+groupList = ["disgust","fear","happy","sad"];
+% groupList = ["fear"];
 
 %set playback volume of movie audio (0 is mute, 1.0 == 100% audio volume).
 soundvolume=0;

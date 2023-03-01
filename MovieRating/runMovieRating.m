@@ -1,4 +1,4 @@
-function result = runMovieRating(subID)
+function results = runMovieRating(subID)
 %Video Stimulus Presentation Program
 
 %% Uncomment this if needed (for testing only!)
@@ -12,6 +12,8 @@ AssertOpenGL;
 %%
 settingsMovieRating;
 
+subName = sprintf('subject%s',num2str(subID));
+
 %when working with the PTB it is a good idea to enclose the whole body of your program
 %in a try ... catch ... end construct. This will often prevent you from getting stuck
 %in the PTB full screen mode
@@ -20,7 +22,7 @@ try
     Screen('Screens');
 
     %add each directory that exists to the path
-    for i=1:length(directoryList)
+    for i=1:length(directoryList)                %#ok directoryList is defined in 'settingsMovieRating' settings file
         if exist(directoryList{i},'dir')
             myexpt=directoryList{i};
         end
@@ -108,34 +110,46 @@ try
     randomizedGroups = randperm(numGroups);
 
     experimentStart=datetime('now','Format','yyyyMMddHHmmss');
-    resultsFolder = strcat('results','/',num2str(subID),'/',string(experimentStart));
+    resultsFolder = strcat('results','/',num2str(subID));
+    resultsFilename=strcat(resultsFolder, '/', 'resultfile_', num2str(subID), '_', string(experimentStart), '.mat');
+
     if ~exist(resultsFolder, 'dir')
         % Folder does not exist so create it.
         mkdir(resultsFolder);
     end
 
-    for group = randomizedGroups
+    results.(subName).subID=subID;
+    results.(subName).experimentStart=experimentStart;
+
+    for groupIndex = randomizedGroups
+        if ~isvarname(groupList{groupIndex})
+            error('%s must be a valid MATLAB variable name',groupList{groupIndex})
+        end
+        
         %% Display thank you and performance feedback
-        DrawFormattedText(win, sprintf('Use the dial to rate the amount of "%s" emotion displayed in the movie.\n\nPress any key to continue...', groupList{group}), 'center', 'center');
+        DrawFormattedText(win, sprintf('Use the dial to rate the amount of "%s" emotion displayed in the movie.\n\nPress any key to continue...', groupList{groupIndex}), 'center', 'center');
         Screen('Flip', win);
         KbWait([], 2); %wait for keystroke
 
         % Get the image files for the experiment
-        movieFolder=[myexpt groupList{group}];
+        movieFolder=[myexpt groupList{groupIndex}];
 
         movieList = dir(fullfile(movieFolder,'*.mov'));
         movieList = {movieList(:).name};
-        numTrials = length(movieList);
+        numMoview = length(movieList);
 
-        % Randomize the trial list
-        randomizedTrials = randperm(numTrials);
+        % Randomize the movie list
+        randomizedMovies = randperm(numMoview);
 
-        for trial = randomizedTrials
+        for movieIndex = randomizedMovies
             
-            [~,trialBaseName,~] = fileparts(movieList{trial});
-            resultsFilename=strcat(resultsFolder, '/', 'resultfile_', num2str(subID), '_', '_', groupList{group}, '_', trialBaseName, '.csv');
+            [~,movieBaseName,~] = fileparts(movieList{movieIndex});
 
-            moviePath = [movieFolder '/' movieList{trial}];
+            if ~isvarname(movieBaseName)
+                error('%s must be a valid MATLAB variable name',movieBaseName)
+            end
+    
+            moviePath = [movieFolder '/' movieList{movieIndex}];
             fprintf('Loading movie %s ...\n', moviePath);
 
             % Show title while movie is loading/prerolling:
@@ -163,7 +177,7 @@ try
             
             t1 = GetSecs;
             
-            result=zeros(round(hz*movieduration),5); % initialize 5-column array;
+            data=zeros(round(hz*movieduration),3); % initialize 5-column matrix;
             
             dialPos=0;
             oldPos=0;
@@ -227,7 +241,7 @@ try
                     % and to the right decreases the rating. Substracting diffPos
                     % reverses this. This is kinda like the 'Natural scrolling'
                     % mouse setting on Max OS.
-                    newRating = result(counter-1, 5) + diffPos;
+                    newRating = data(counter-1, 3) + diffPos;
                 end
 
                 %make newRating a value between min and max rating:
@@ -248,10 +262,10 @@ try
                     xCords = reshape(temp,[length(temp),1]);
 
                     % Create yCords scaled based on the rating.
-                    % First, extract the 5th column from the results matrix (temp1)
-                    % Next, scale results by dotSize (temp2)
+                    % First, extract the 5th column from the data matrix (temp1)
+                    % Next, scale rating data by dotSize (temp2)
                     % Finally, generate yCords for dot placement based on desired screen placement (yCords)
-                    temp1 = result(1:length(xCords),5);
+                    temp1 = data(1:length(xCords),3);
                     temp2 = (temp1(:,:,1)-1)*displayScaleFactor;
                     yCords = Vstart-temp2(:,:,1);
 
@@ -259,6 +273,7 @@ try
                     Screen('DrawDots', win, [(xCords)'; (yCords)'], dotSize, oldDotColor);
 
                 end
+
                 %draw new data point:
                 ratingCord=Vstart-((newRating-1)*displayScaleFactor);
                 Screen('DrawDots', win, [maxDots ratingCord], dotSize, newDotColor);
@@ -267,9 +282,8 @@ try
                 [~, StimulusOnsetTime, ~, ~, ~] = Screen('Flip', win);
                 Screen('Close', tex)
 
-                %enter result in matrix
-                result(counter,:) = [subID, trial, StimulusOnsetTime, counter, newRating];
-                
+                %add rating to data matrix:
+                data(counter,:) = [StimulusOnsetTime, counter, newRating];
             end
 
             % Close the movie object
@@ -277,20 +291,26 @@ try
 
 
             %%
-            %% Append result matrix to comma delimited text file after each movie
+            %% Create results struct and save it to a file
             %%
 
-            %truncate unused rows in the result matrix: 
-            result(counter:end,:) = [];
+            %truncate unused rows in the data matrix: 
+            data(counter:end,:) = [];
 
-            %TODO: add cells for group name and trial name
+            results.(subName).(groupList{groupIndex}).(movieBaseName).data=data;
 
-            %write header row for results file
-            writecell({'subID','trial','time','counter','rating'},resultsFilename)
-            writematrix(result,resultsFilename,'WriteMode','append');
+            %make figures
+            % what is the average timeseries for all subjects for each emortion?
+            % what is each subjects average for happy
+            % fore each movie, what is the group average
+            % for each
+            % 
 
         end
     end
+
+    %% Save results for this subject to a .mat file
+    save(resultsFilename,'results');
 
     %% Display thank you and performance feedback
     DrawFormattedText(win, 'Thank you for participating!\n\nPress any key to exit.', 'center', 'center');
