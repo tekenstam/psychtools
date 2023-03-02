@@ -92,8 +92,6 @@ try
     % Use blocking wait for new frames by default:
     blocking = 1;
 
-    % Playbackrate defaults to 1:
-    rate=1;
 
     % Choose 16 pixel text size:
     Screen('TextSize', win, 32);
@@ -118,8 +116,15 @@ try
         mkdir(resultsFolder);
     end
 
+    %Add experiment info to results struct:
     results.(subName).subID=subID;
-    results.(subName).experimentStart=experimentStart;
+    results.(subName).info.groupList=groupList;
+    results.(subName).info.groupOrder=randomizedGroups;
+    results.(subName).info.experimentStart=experimentStart;
+    results.(subName).info.powerMateExists=powerMateExists;
+    results.(subName).info.screen.monitorFlipInterval=monitorFlipInterval;
+    results.(subName).info.screen.winHeight=winHeight;
+    results.(subName).info.screen.winWidth=winWidth;
 
     for groupIndex = randomizedGroups
         if ~isvarname(groupList{groupIndex})
@@ -140,6 +145,10 @@ try
 
         % Randomize the movie list
         randomizedMovies = randperm(numMoview);
+
+        %Add group info to results struct:
+        results.(subName).(groupList{groupIndex}).info.movieList=movieList;
+        results.(subName).(groupList{groupIndex}).info.movieOrder=randomizedMovies;
 
         for movieIndex = randomizedMovies
             
@@ -167,23 +176,27 @@ try
                 offset=dstRect(2)-round(dstRect(2)*.2);
                 dstRect=[dstRect(1) dstRect(2)-offset dstRect(3) dstRect(4)-offset];
             end
+
+            %Add group info to results struct:
+            results.(subName).(groupList{groupIndex}).(movieBaseName).info.duration=movieduration;
+            results.(subName).(groupList{groupIndex}).(movieBaseName).info.fps=fps;
+            results.(subName).(groupList{groupIndex}).(movieBaseName).info.width=imgw;
+            results.(subName).(groupList{groupIndex}).(movieBaseName).info.height=imgh;
+            results.(subName).(groupList{groupIndex}).(movieBaseName).info.dstRect=dstRect;
             
-            % Start playback of movie. This will start
-            % the realtime playback clock and playback of audio tracks, if any.
-            % Play 'movie', at a playbackrate = 1, with endless loop=1 and
-            % 1.0 == 100% audio volume.
-            
-            Screen('PlayMovie', movie, rate, 0, soundvolume);
+            % Start playback of movie. This will start the realtime
+            % playback clock and playback of audio tracks, if any.            
+            Screen('PlayMovie', movie, playbackRate, 0, soundvolume);
             
             t1 = GetSecs;
             
-            data=zeros(round(hz*movieduration),3); % initialize 5-column matrix;
+            data=zeros(round(hz*movieduration),3); % initialize 3-column matrix to store data;
             
             dialPos=0;
             oldPos=0;
 
-            % Infinite playback loop: Fetch video frames and display them...
             counter=0;                           %number of frames displayed and datapoints collected
+            % Infinite playback loop: Fetch video frames and display them...
             while 1
 
                 counter=counter+1;
@@ -196,7 +209,7 @@ try
                     break;
                 end
                 
-                if ((abs(rate)>0) && (imgw>0) && (imgh>0))
+                if ((abs(playbackRate)>0) && (imgw>0) && (imgh>0))
                     % Return next frame in movie, in sync with current playback
                     % time and sound.
                     % tex is either the positive texture handle or zero if no
