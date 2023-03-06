@@ -1,4 +1,4 @@
-function results = runMovieRating(subID)
+function result = runMovieRating(subID)
 %Video Stimulus Presentation Program
 
 %% Uncomment this if needed (for testing only!)
@@ -12,22 +12,20 @@ AssertOpenGL;
 %%
 settingsMovieRating;
 
-subName = sprintf('subject%s',num2str(subID));
-
 %when working with the PTB it is a good idea to enclose the whole body of your program
 %in a try ... catch ... end construct. This will often prevent you from getting stuck
 %in the PTB full screen mode
 try
-    rng('shuffle');			% reset random number generator
+    rng;
     Screen('Screens');
 
     %add each directory that exists to the path
     for i=1:length(directoryList)                %#ok directoryList is defined in 'settingsMovieRating' settings file
         if exist(directoryList{i},'dir')
             myexpt=directoryList{i};
+            addpath(myexpt);
         end
     end
-    addpath(myexpt)
 
     %% Discover PowerMate dial and keyboard
     devices=PsychHID('Devices');
@@ -74,7 +72,6 @@ try
     % Calculate feedback window parameters based on screen size
     displayBottomBuffer=(lineWidth*2)+(dotSize/2)+1;
     displayTopBuffer=(lineWidth)+(dotSize/2)+1;
-    displayScaleFactor=(feedbackWindowHeight-displayBottomBuffer-displayTopBuffer)/(maxRating-minRating);
     Vstart=winHeight-displayBottomBuffer;
     Vtop=winHeight-feedbackWindowHeight;
     maxDots=round(winWidth/2);                   %number of dots that fit on half the screen
@@ -100,7 +97,7 @@ try
 
 
     %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-    %% Set up stimuli lists and results file
+    %% Set up stimuli lists and result file
     %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
     numGroups = length(groupList);     %#ok groupList is defined in settings file
@@ -108,8 +105,9 @@ try
     randomizedGroups = randperm(numGroups);
 
     experimentStart=datetime('now','Format','yyyyMMddHHmmss');
-    resultsFolder = strcat('results','/',num2str(subID));
-    resultsFilename=strcat(resultsFolder, '/', 'resultfile_', num2str(subID), '_', string(experimentStart), '.mat');
+    resultsFolder = 'results';
+    resultFilename=[resultsFolder '/' 'resultfile_' num2str(subID) '_' ...
+        char(experimentStart) '.mat'];
 
     if ~exist(resultsFolder, 'dir')
         % Folder does not exist so create it.
@@ -117,14 +115,14 @@ try
     end
 
     %Add experiment info to results struct:
-    results.(subName).subID=subID;
-    results.(subName).info.groupList=groupList;
-    results.(subName).info.groupOrder=randomizedGroups;
-    results.(subName).info.experimentStart=experimentStart;
-    results.(subName).info.powerMateExists=powerMateExists;
-    results.(subName).info.screen.monitorFlipInterval=monitorFlipInterval;
-    results.(subName).info.screen.winHeight=winHeight;
-    results.(subName).info.screen.winWidth=winWidth;
+    result.subID=subID;
+    result.info.groupList=groupList;
+    result.info.groupOrder=randomizedGroups;
+    result.info.experimentStart=experimentStart;
+    result.info.powerMateExists=powerMateExists;
+    result.info.screen.monitorFlipInterval=monitorFlipInterval;
+    result.info.screen.winHeight=winHeight;
+    result.info.screen.winWidth=winWidth;
 
     for groupIndex = randomizedGroups
         if ~isvarname(groupList{groupIndex})
@@ -132,7 +130,7 @@ try
         end
         
         %% Display thank you and performance feedback
-        DrawFormattedText(win, sprintf('Use the dial to rate the amount of "%s" emotion displayed in the movie.\n\nPress any key to continue...', groupList{groupIndex}), 'center', 'center');
+        DrawFormattedText(win, sprintf('Use the dial to rate how "%s" the person is throughout the movie.\nThe rating will be captured for each frame in the movie.\n\nPress any key to continue...', groupListAdjectives{groupIndex}), 'center', 'center');
         Screen('Flip', win);
         KbWait([], 2); %wait for keystroke
 
@@ -147,8 +145,8 @@ try
         randomizedMovies = randperm(numMoview);
 
         %Add group info to results struct:
-        results.(subName).(groupList{groupIndex}).info.movieList=movieList;
-        results.(subName).(groupList{groupIndex}).info.movieOrder=randomizedMovies;
+        result.(groupList{groupIndex}).info.movieList=movieList;
+        result.(groupList{groupIndex}).info.movieOrder=randomizedMovies;
 
         for movieIndex = randomizedMovies
             
@@ -178,11 +176,11 @@ try
             end
 
             %Add group info to results struct:
-            results.(subName).(groupList{groupIndex}).(movieBaseName).info.duration=movieduration;
-            results.(subName).(groupList{groupIndex}).(movieBaseName).info.fps=fps;
-            results.(subName).(groupList{groupIndex}).(movieBaseName).info.width=imgw;
-            results.(subName).(groupList{groupIndex}).(movieBaseName).info.height=imgh;
-            results.(subName).(groupList{groupIndex}).(movieBaseName).info.dstRect=dstRect;
+            result.(groupList{groupIndex}).(movieBaseName).info.duration=movieduration;
+            result.(groupList{groupIndex}).(movieBaseName).info.fps=fps;
+            result.(groupList{groupIndex}).(movieBaseName).info.width=imgw;
+            result.(groupList{groupIndex}).(movieBaseName).info.height=imgh;
+            result.(groupList{groupIndex}).(movieBaseName).info.dstRect=dstRect;
             
             % Start playback of movie. This will start the realtime
             % playback clock and playback of audio tracks, if any.            
@@ -194,6 +192,9 @@ try
             
             dialPos=0;
             oldPos=0;
+
+            dynamicMaxRating=maxRating;
+            displayScaleFactor=(feedbackWindowHeight-displayBottomBuffer-displayTopBuffer)/(maxRating-minRating);
 
             counter=0;                           %number of frames displayed and datapoints collected
             % Infinite playback loop: Fetch video frames and display them...
@@ -258,8 +259,9 @@ try
                 end
 
                 %make newRating a value between min and max rating:
-                if newRating>maxRating           %maxRating is defined in setting file
-                    newRating=maxRating;
+                if newRating>dynamicMaxRating           %maxRating is defined in setting file
+                    dynamicMaxRating=newRating;
+                    displayScaleFactor=(feedbackWindowHeight-displayBottomBuffer-displayTopBuffer)/(dynamicMaxRating-minRating);
                 elseif newRating<minRating       %maxRating is defined in setting file
                     newRating=minRating;
                 end
@@ -283,13 +285,13 @@ try
                     yCords = Vstart-temp2(:,:,1);
 
                     %draw old data points:
-                    Screen('DrawDots', win, [(xCords)'; (yCords)'], dotSize, oldDotColor);
+                    Screen('DrawDots', win, [(xCords)'; (yCords)'], dotSize, oldDotColor, [0 0], 1);
 
                 end
 
                 %draw new data point:
                 ratingCord=Vstart-((newRating-1)*displayScaleFactor);
-                Screen('DrawDots', win, [maxDots ratingCord], dotSize, newDotColor);
+                Screen('DrawDots', win, [maxDots ratingCord], dotSize, newDotColor, [0 0], 1);
 
                 % Update display and close the movie frame texture:
                 [~, StimulusOnsetTime, ~, ~, ~] = Screen('Flip', win);
@@ -310,7 +312,7 @@ try
             %truncate unused rows in the data matrix: 
             data(counter:end,:) = [];
 
-            results.(subName).(groupList{groupIndex}).(movieBaseName).data=data;
+            result.(groupList{groupIndex}).(movieBaseName).data=data;
 
             %make figures
             % what is the average timeseries for all subjects for each emortion?
@@ -323,7 +325,7 @@ try
     end
 
     %% Save results for this subject to a .mat file
-    save(resultsFilename,'results');
+    save(resultFilename,'result');
 
     %% Display thank you and performance feedback
     DrawFormattedText(win, 'Thank you for participating!\n\nPress any key to exit.', 'center', 'center');
