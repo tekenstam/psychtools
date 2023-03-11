@@ -1,64 +1,106 @@
-
+%clear all variables and close all open diagrams
 clear all;
+close all;
 
-results{1}=load('results/resultfile_112114_20230303125256.mat');
-results{2}=load('results/resultfile_115576_20230228220137.mat');
-results{3}=load('results/resultfile_122652_20230301115523.mat');
-results{4}=load('results/resultfile_134164_20230301131427.mat');
-results{5}=load('results/resultfile_142249_20230302125209.mat');
-results{6}=load('results/resultfile_20050817_20230304204831.mat');
-results{7}=load('results/resultfile_20071026_20230304211511.mat');
-results{8}=load('results/resultfile_20120207_20230304193314.mat');
+%load results from result files
+resultsFolder = 'results/';
+resultList = dir([resultsFolder,'*.mat']);
+numResults = length(resultList);
+for resultNum = 1:numResults;
+    results{resultNum}=load([resultsFolder,resultList(resultNum).name]);
+    subjIDList{resultNum} = results{resultNum}.result.subID;
+end
+subjIDList=subjIDList.';
 
-emotionList = ["disgust","fear","happy","sad"];
+% The syntax for cell arrays is
+% emotionList = {'disgust','fear','happy','sad'};
+% curly brackets signify cell arrays
+% square brackets signify numerical, string, and character arrays
+% using ["disgust"...] seems to work but it is not consistent with other
+% syntax of cell arrays
+
+%set list of emotions to analyze from info in first result set
+%(they should all be the same)
+emotionList = results{1}.result.info.groupList;
 numEmotions = length(emotionList);
 figureNum = 0;
 
 %loop through each emotion
 for emotionNum = 1:numEmotions
     emotion = emotionList{emotionNum};
-    videoList = dir(strcat('/Users/annikaekenstam/Dropbox/Stimuli/',emotion,'/*.mov'));
-    videoList = {videoList(:).name};
+
+    % I don't ever use fullfile.  Instead I prefer a simple concatenation
+    % using square brackets e.g. mystring = ['/Users/annikaekenstam/Dropbox/Stimuli/',emotion,'/*.mov'];
+    % or
+    % videoList = dir(['/Users/annikaekenstam/Dropbox/Stimuli/',emotion,'/*.mov'])
+    %get list of videos for the emotion from info in first result set
+    %(they should all be the same)
+    videoList = results{1}.result.(emotion).info.movieList;
+    %videoList = dir(strcat('/Users/annikaekenstam/Dropbox/Stimuli/',emotion,'/*.mov'));
+    %     videoList = dir(strcat('/Users/corelabuser/Dropbox/Stimuli/',emotion,'/*.mov'));
+    %     videoList = {videoList(:).name};
 
     numVid = length(videoList);
+
+    %TO DO INITIALIZE SUBJECT ARRAY TO NANANANANANAN
+
+    %subjCorrelation = nan(6,7);
 
     %loop through each video
     for vidNum = 1:numVid
         [~,videoBaseName,~] = fileparts(videoList{vidNum});
-        Y=nan(3000,5);
+        duration = results{1}.result.(emotion).(videoBaseName).info.duration;
+        fps = results{1}.result.(emotion).(videoBaseName).info.fps;
+        numExpectedDatapoints = round(duration*fps);
+
+        Y=nan(numExpectedDatapoints,5);
         for subjNum = 1:length(results)
-            subjData=results{subjNum}.result.(emotion).(videoBaseName).data(:,3);
+            %videoStruct = interpolateData(results{subjNum}.result.(emotion).(videoBaseName));
+            subjData = results{subjNum}.result.(emotion).(videoBaseName).data(:,3);
 
-            dataLength=length(subjData);
-            Y(1:dataLength,subjNum)=subjData;
-
+            dataLength = length(subjData);
+            Y(1:dataLength,subjNum) = subjData;
         end
 
+        %%%%%%%%%%%%%%%%%%%%%%%%%%
+        % if you want to remove values that exceed the max boundary you can do it here.
+        % inds = find(Y > mymax); Y(inds) = NaN;
+        % meanAcrossSubjects = nanmean(Y,2);
+        % nanmean calculates mean while ignoring NaNs
         meanAcrossSubjects = mean(Y,2);
+
+
+        % replace with standard error of the mean. %%%%%%%%%%%%%%%%%%%%%
+        % se = std(x)/sqrt(n), where n = number of values in x
+        % std is the sample variance
+        % se is the estimate of the population variance
         standardDeviationAcrossSubjects = std(Y,0,2);
 
         figureNum = figureNum + 1;
+        % You could also just do figure(vidNum) %%%%%%%%%%%%%%%%%%%%%
         figure(figureNum);
         g = plot(meanAcrossSubjects,'-k');
         set(g,'linewidth',3)
         hold on
         plot(Y)
         g = plot(meanAcrossSubjects-standardDeviationAcrossSubjects,':k');
-        set(g,'linewidth',3)
+        set(g,'linewidth',2)
         g = plot(meanAcrossSubjects+standardDeviationAcrossSubjects,':k');
-        set(g,'linewidth',3)
+        set(g,'linewidth',2)
+        % alternative to strcat and fullfile: title([emotion,' video #',num2str(vidNum)]) %%%%%%%%%%%%%
         title(strcat(emotion,' video #',num2str(vidNum)))
 
+        subjCorrelation{vidNum} = corr(Y,meanAcrossSubjects,'rows','complete');
 
         %find correlation between subject and mean of all subject
         %TODO: Solve the NaN problem
         %TODO: Create a function that will cleanup the data. Do the
         %interpolation of the timeseries, etc.
-        for corrNum = 1:subjNum
-            temp=corrcoef(Y(:,corrNum),meanAcrossSubjects)
-        end
+        %for corrNum = 1:subjNum
+        %    temp=corrcoef(Y(:,corrNum),meanAcrossSubjects);
+        %end
 
-        temp=corr(Y, meanAcrossSubjects,'rows','complete')
+        %temp=corr(Y, meanAcrossSubjects,'rows','complete');
 
         %Get collenations for all video
         %average of all correlation for each emotion for each subject
@@ -72,10 +114,60 @@ for emotionNum = 1:numEmotions
         %robustfit or regress functions - basic linear equation
 
         %bar plot of correlation of each emotion
-
-
     end
+
+
+
+    % for upper bounds always use a variable
+    % otherwise you will have to change your code every time you add a subject
+    % correlationTable = table(subjIDList,subjCorrelation{1:numSubj});
+
+    videoCorrelation=subjCorrelation.';
+    %correlation between subject and mean of all subjects
+    correlationTable = table(subjIDList,videoCorrelation{1:7});
+
+    % you can convert a number into a string using num2str(x)
+    % e.g. for i=1:9
+    % mystring = ['00' num2str(i)];
+    % end
+    % for i = 10:99
+    % mystring = ['0' num2str(i)];
+    % end
+    %
+    % bonus points if you can combine these two loops into one
+    correlationTable.Properties.VariableNames = ["subjID","001","002","003","004","005","006","007"];
+    fprintf("%s\n",emotion);
+    disp(correlationTable);
+
+    %plot correlation between subject and mean of all subjects per emotion
+    %(x = mean rating across subjects, y = subject rating)
+    %line of best fit, final relationship = slope (a)
+    %y = ax + b
+
+    %plot slope vs. RS
+    %(x = slope (a), y = RS)
+    %line of best fit using robustfit, final relationship = final
+    %predicted + slope (as slope increases, RS increases)
+
+    %plot corr vs. RS
+    %(x = corr (a), y = RS)
+    %line of best fit using robustfit, final relationship = final
+    %predicted - slope (as corr increases, RS decreases)
+
 end
+
+
+function videoStruct = interpolateData(videoStruct)
+
+secondsPerFrame=1/videoStruct.info.fps
+numFrames=round(videoStruct.info.duration/secondsPerFrame)
+xq = (videoStruct.data(1,1):secondsPerFrame:videoStruct.data(1,1)+(secondsPerFrame*numFrames))
+reshape(xq,[],1)
+
+fprintf(videoStruct)
+
+end
+
 
 % y1 = smoothdata(rand(1069,1),'gaussian', 100);
 % y2 = smoothdata(rand(873,1),'gaussian',100);
