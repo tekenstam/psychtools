@@ -6,11 +6,12 @@ close all;
 resultsFolder = 'results/';
 resultList = dir([resultsFolder,'*.mat']);
 numResults = length(resultList);
+subjIDList = zeros(numResults, 1);
 for resultNum = 1:numResults;
     results{resultNum}=load([resultsFolder,resultList(resultNum).name]);
-    subjIDList{resultNum} = results{resultNum}.result.subID;
+    subjIDList(resultNum,1) = results{resultNum}.result.subID;
 end
-subjIDList=subjIDList.';
+%subjIDList=subjIDList.';
 
 % The syntax for cell arrays is
 % emotionList = {'disgust','fear','happy','sad'};
@@ -25,26 +26,18 @@ emotionList = results{1}.result.info.groupList;
 numEmotions = length(emotionList);
 figureNum = 0;
 
+myGroupResults = cell(numEmotions,1);
+
 %loop through each emotion
 for emotionNum = 1:numEmotions
     emotion = emotionList{emotionNum};
 
-    % I don't ever use fullfile.  Instead I prefer a simple concatenation
-    % using square brackets e.g. mystring = ['/Users/annikaekenstam/Dropbox/Stimuli/',emotion,'/*.mov'];
-    % or
-    % videoList = dir(['/Users/annikaekenstam/Dropbox/Stimuli/',emotion,'/*.mov'])
-    %get list of videos for the emotion from info in first result set
-    %(they should all be the same)
     videoList = results{1}.result.(emotion).info.movieList;
-    %videoList = dir(strcat('/Users/annikaekenstam/Dropbox/Stimuli/',emotion,'/*.mov'));
-    %     videoList = dir(strcat('/Users/corelabuser/Dropbox/Stimuli/',emotion,'/*.mov'));
-    %     videoList = {videoList(:).name};
-
     numVid = length(videoList);
 
     %TO DO INITIALIZE SUBJECT ARRAY TO NANANANANANAN
 
-    %subjCorrelation = nan(6,7);
+    subjCorrelation = nan(numResults,numVid);
 
     %loop through each video
     for vidNum = 1:numVid
@@ -53,7 +46,7 @@ for emotionNum = 1:numEmotions
         fps = results{1}.result.(emotion).(videoBaseName).info.fps;
         numExpectedDatapoints = round(duration*fps);
 
-        Y=nan(numExpectedDatapoints,5);
+        Y=nan(numExpectedDatapoints,numResults);
         for subjNum = 1:length(results)
             %videoStruct = interpolateData(results{subjNum}.result.(emotion).(videoBaseName));
             subjData = results{subjNum}.result.(emotion).(videoBaseName).data(:,3);
@@ -64,10 +57,14 @@ for emotionNum = 1:numEmotions
 
         %%%%%%%%%%%%%%%%%%%%%%%%%%
         % if you want to remove values that exceed the max boundary you can do it here.
-        % inds = find(Y > mymax); Y(inds) = NaN;
-        % meanAcrossSubjects = nanmean(Y,2);
+        %Change any values > 20 to 20.
+
+        %TODO: Rescale timeseries with any values > 20
+        %inds = find(Y > 20); Y(inds) = 20;
+        %meanAcrossSubjects = nanmean(Y,2);
+
         % nanmean calculates mean while ignoring NaNs
-        meanAcrossSubjects = mean(Y,2);
+        meanAcrossSubjects = nanmean(Y,2);
 
 
         % replace with standard error of the mean. %%%%%%%%%%%%%%%%%%%%%
@@ -83,6 +80,7 @@ for emotionNum = 1:numEmotions
         set(g,'linewidth',3)
         hold on
         plot(Y)
+
         g = plot(meanAcrossSubjects-standardDeviationAcrossSubjects,':k');
         set(g,'linewidth',2)
         g = plot(meanAcrossSubjects+standardDeviationAcrossSubjects,':k');
@@ -90,7 +88,7 @@ for emotionNum = 1:numEmotions
         % alternative to strcat and fullfile: title([emotion,' video #',num2str(vidNum)]) %%%%%%%%%%%%%
         title(strcat(emotion,' video #',num2str(vidNum)))
 
-        subjCorrelation{vidNum} = corr(Y,meanAcrossSubjects,'rows','complete');
+        subjCorrelation(:,vidNum) = corr(Y,meanAcrossSubjects,'rows','complete');
 
         %find correlation between subject and mean of all subject
         %TODO: Solve the NaN problem
@@ -116,15 +114,26 @@ for emotionNum = 1:numEmotions
         %bar plot of correlation of each emotion
     end
 
+    myGroupResults{emotionNum} = subjCorrelation;
+    %TODO: This should need to be 'nanmean'
+    subjectByEmotionCorr(:,emotionNum) = mean(subjCorrelation,2);
 
+    plot(1:7,mean(myGroupResults{1}))
+    xlabel('disgust')
+    ylabel('corr to the mean')
+
+
+
+    %subject by emotion
 
     % for upper bounds always use a variable
     % otherwise you will have to change your code every time you add a subject
     % correlationTable = table(subjIDList,subjCorrelation{1:numSubj});
 
-    videoCorrelation=subjCorrelation.';
+    %videoCorrelation=subjCorrelation.';
     %correlation between subject and mean of all subjects
-    correlationTable = table(subjIDList,videoCorrelation{1:7});
+    %correlationTable = table(num2str(subjIDList),subjCorrelation(:,1:numVid));
+    %     correlationTable = table(num2str(subjIDList),{subjCorrelation});
 
     % you can convert a number into a string using num2str(x)
     % e.g. for i=1:9
@@ -135,9 +144,9 @@ for emotionNum = 1:numEmotions
     % end
     %
     % bonus points if you can combine these two loops into one
-    correlationTable.Properties.VariableNames = ["subjID","001","002","003","004","005","006","007"];
-    fprintf("%s\n",emotion);
-    disp(correlationTable);
+    %     correlationTable.Properties.VariableNames = ["subjID","Video 001","Video 002","Video 003","Video 004","Video 005","Video 006","Video 007"];
+    %     fprintf("Correlation on subject ratings between %s videos:\n",emotion);
+    %     disp(correlationTable);
 
     %plot correlation between subject and mean of all subjects per emotion
     %(x = mean rating across subjects, y = subject rating)
@@ -155,6 +164,55 @@ for emotionNum = 1:numEmotions
     %predicted - slope (as corr increases, RS decreases)
 
 end
+
+figure
+% emoCorrForRegression = zeros(factorial(numEmotions-1)*numResults,2);
+emoCorrForRegression = [];
+for emotionNumX = 1:numEmotions-1
+    for emotionNumY = emotionNumX+1:numEmotions
+        temp = [subjectByEmotionCorr(:,emotionNumX),subjectByEmotionCorr(:,emotionNumY)];
+        emoCorrForRegression = [emoCorrForRegression;temp];
+        plot(subjectByEmotionCorr(:,emotionNumX),subjectByEmotionCorr(:,emotionNumY),'ro')
+        xlabel('correlation');
+        ylabel('correlation');
+        title('All emotions')
+        hold on;
+    end
+end
+[B, stats] = robustfit(emoCorrForRegression(:,1),emoCorrForRegression(:,2));
+%stats.p is P-value. Anything less than .05 is not by chance (e.g.
+%statistically significant)
+%y=ax+b
+plot(emoCorrForRegression(:,1), emoCorrForRegression(:,1)*B(2)+B(1));
+disp(['P-value for all datapoints: ', num2str(stats.p(2))]);
+
+
+% emoCorrForRegression = zeros(factorial(numEmotions-1)*numResults,2);
+for emotionNumX = 1:numEmotions-1
+    emoCorrForRegression = [];
+    for emotionNumY = emotionNumX+1:numEmotions
+        figure
+
+%         temp = [subjectByEmotionCorr(:,emotionNumX),subjectByEmotionCorr(:,emotionNumY)];
+%         emoCorrForRegression = [emoCorrForRegression;temp];
+        emoCorrForRegression = [subjectByEmotionCorr(:,emotionNumX),subjectByEmotionCorr(:,emotionNumY)];
+        plot(subjectByEmotionCorr(:,emotionNumX),subjectByEmotionCorr(:,emotionNumY),'ro')
+        xlabel([emotionList{emotionNumX}, ' correlation']);
+        ylabel([emotionList{emotionNumY}, ' correlation']);
+        title([emotionList{emotionNumX}, ' vs. ', emotionList{emotionNumY} ' correlation (P-value: ', num2str(stats.p(2)), ')'])
+        hold on;
+
+    [B, stats] = robustfit(emoCorrForRegression(:,1),emoCorrForRegression(:,2));
+    %stats.p is P-value. Anything less than .05 is not by chance (e.g.
+    %statistically significant)
+    %y=ax+b
+    plot(emoCorrForRegression(:,1), emoCorrForRegression(:,1)*B(2)+B(1));
+    disp(['P-value for all datapoints: ', num2str(stats.p(2))]);
+    end
+end
+
+
+
 
 
 function videoStruct = interpolateData(videoStruct)
