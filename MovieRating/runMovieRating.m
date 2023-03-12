@@ -72,6 +72,7 @@ try
     % Calculate feedback window parameters based on screen size
     displayBottomBuffer=(lineWidth*2)+(dotSize/2)+1;
     displayTopBuffer=(lineWidth)+(dotSize/2)+1;
+    displayScaleFactor=(feedbackWindowHeight-displayBottomBuffer-displayTopBuffer)/(maxRating-minRating);
     Vstart=winHeight-displayBottomBuffer;
     Vtop=winHeight-feedbackWindowHeight;
     maxDots=round(winWidth/2);                   %number of dots that fit on half the screen
@@ -193,8 +194,8 @@ try
             dialPos=0;
             oldPos=0;
 
-            dynamicMaxRating=maxRating;
-            displayScaleFactor=(feedbackWindowHeight-displayBottomBuffer-displayTopBuffer)/(maxRating-minRating);
+            % dynamicMaxRating=maxRating;
+            % displayScaleFactor=(feedbackWindowHeight-displayBottomBuffer-displayTopBuffer)/(maxRating-minRating);
 
             counter=0;                           %number of frames displayed and datapoints collected
             % Infinite playback loop: Fetch video frames and display them...
@@ -259,9 +260,11 @@ try
                 end
 
                 %make newRating a value between min and max rating:
-                if newRating>dynamicMaxRating           %maxRating is defined in setting file
-                    dynamicMaxRating=newRating;
-                    displayScaleFactor=(feedbackWindowHeight-displayBottomBuffer-displayTopBuffer)/(dynamicMaxRating-minRating);
+                % if newRating>dynamicMaxRating           %maxRating is defined in setting file
+                %     dynamicMaxRating=newRating;
+                %     displayScaleFactor=(feedbackWindowHeight-displayBottomBuffer-displayTopBuffer)/(dynamicMaxRating-minRating);
+                if newRating>maxRating           %maxRating is defined in setting file
+                    newRating = maxRating;
                 elseif newRating<minRating       %maxRating is defined in setting file
                     newRating=minRating;
                 end
