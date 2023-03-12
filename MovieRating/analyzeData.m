@@ -28,6 +28,7 @@ figureNum = 0;
 
 myGroupResults = cell(numEmotions,1);
 mySubjSlopes = zeros(numSubjects, numEmotions);
+myEmotionMeanAcrossSubjects = [];
 
 %loop through each emotion
 for emotionNum = 1:numEmotions
@@ -170,11 +171,39 @@ for emotionNum = 1:numEmotions
     title([emotionList{emotionNum},' vs. RS Score (P-value: ',num2str(stats.p(2)),')']);
 end
 
-%scaling factor of each subject plotted against RS
+%scaling factor of each subject plotted against RS for each emotion
 %mySubjSlopes is the scaling factor to get the values for each subject
 %same analysis as the correlation of each subject
-%correltate mySubjSlopes with rsScores
-% mean across subject for a particular emotion
+%correlate mySubjSlopes with rsScores
+
+%subject average slope for all emotions vs RS score
+%X = mean slope, Y= RS score
+figure;
+plot(mean(mySubjSlopes,2), rsScores.data(:,2), 'o');
+hold on;
+[B, stats] = robustfit(mean(mySubjSlopes,2),rsScores.data(:,2));
+plot(mean(mySubjSlopes,2),mean(mySubjSlopes,2)*B(2)+B(1),'r-');
+xlabel('Mean slope of correlation for all emotions');
+ylabel('RS Score');
+title(['Mean slope of all emotions vs. RS Score (P-value: ',num2str(stats.p(2)),')']);
+
+%subject average slope for each emotion vs RS score
+%X = mean slope, Y= RS score
+for emotionNum = 1:numEmotions
+    figure;
+    plot(mySubjSlopes(:,emotionNum), rsScores.data(:,2), 'o');
+    hold on;
+    [B, stats] = robustfit(mySubjSlopes(:,emotionNum),rsScores.data(:,2));
+    plot(mySubjSlopes(:,emotionNum),mySubjSlopes(:,emotionNum)*B(2)+B(1),'r-');
+    xlabel(['Slope of ', emotionList{emotionNum}, ' correlation']);
+    ylabel('RS Score');
+    title(['Slope of ', emotionList{emotionNum}, ...
+        ' correlation vs. RS Score (P-value: ', num2str(stats.p(2)), ')']);
+
+end
+
+
+%mean across subject for a particular emotion
 % Regression (robustfit):
 %X - Independent variable
 %Y - Dependent variable
