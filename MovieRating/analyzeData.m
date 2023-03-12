@@ -2,7 +2,9 @@
 clear all;
 close all;
 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %load results from result files
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 if exist('/Users/annikaekenstam/Dropbox/Stimuli/results/','dir')
     resultsFolder = '/Users/annikaekenstam/Dropbox/Stimuli/results/';
 elseif exist('/Users/corelabuser/Dropbox/Stimuli/results/','dir')
@@ -20,15 +22,20 @@ for resultNum = 1:numSubjects;
     subjIDList(resultNum,1) = results{resultNum}.result.subID;
 end
 
-%set list of emotions to analyze from
-%info in first result set (they should all be the same)
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%initialize variables
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 emotionList = results{1}.result.info.groupList;
 numEmotions = length(emotionList);
-figureNum = 0;
 
 myGroupResults = cell(numEmotions,1);
 mySubjSlopes = zeros(numSubjects, numEmotions);
-myEmotionMeanAcrossSubjects = [];
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%process data
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 %loop through each emotion
 for emotionNum = 1:numEmotions
@@ -47,74 +54,57 @@ for emotionNum = 1:numEmotions
         fps = results{1}.result.(emotion).(videoBaseName).info.fps;
         numExpectedDatapoints = round(duration*fps);
 
-        Y=nan(numExpectedDatapoints,numSubjects);
+        videoResults=nan(numExpectedDatapoints,numSubjects);
         for subjNum = 1:numSubjects
             subjData = results{subjNum}.result.(emotion).(videoBaseName).data(:,3);
 
             dataLength = length(subjData);
-            Y(1:dataLength,subjNum) = subjData;
+            videoResults(1:dataLength,subjNum) = subjData;
         end
 
-        %to do check for nan
-        meanAcrossSubjects = nanmean(Y,2);
+        %TODO: check for nan
+        meanAcrossSubjects = nanmean(videoResults,2);
 
-        standardDeviationAcrossSubjects = std(Y,0,2);
+        standardDeviationAcrossSubjects = std(videoResults,0,2);
 
-        %for every subject and video, find the slope between mean and
+        %for each subject and video, find the slope between mean and
         %subject timeseries
         for subjNum = 1:numSubjects
-            B = robustfit(meanAcrossSubjects,Y(:,subjNum));
+            B = robustfit(meanAcrossSubjects, videoResults(:,subjNum));
             tempSlopes(subjNum, vidNum) = B(2);
         end
 
-        figureNum = figureNum + 1;
-        figure(figureNum);
+        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+        %plot mean and +/- standard deviation across subjects
+        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+        figure;
         g = plot(meanAcrossSubjects,'-k');
         set(g,'linewidth',3)
         hold on
-        plot(Y)
+        plot(videoResults)
         g = plot(meanAcrossSubjects-standardDeviationAcrossSubjects,':k');
         set(g,'linewidth',2)
         g = plot(meanAcrossSubjects+standardDeviationAcrossSubjects,':k');
         set(g,'linewidth',2)
         title(strcat(emotion,' video #',num2str(vidNum)))
 
-        subjCorrelation(:,vidNum) = corr(Y,meanAcrossSubjects,'rows','complete');
+        subjCorrelation(:,vidNum) = corr(videoResults, meanAcrossSubjects, 'rows', 'complete');
 
     end
 
-    %calc mean of slope for each video
+    %calculate mean of slope for each video
     mySubjSlopes(:,emotionNum) = mean(tempSlopes,2);
 
     myGroupResults{emotionNum} = subjCorrelation;
     subjByEmotionCorrelation(:,emotionNum) = mean(subjCorrelation,2);
 
-
-    %correlation between subject and mean of all subjects
-    %     correlationTable = table(subjIDList,subjCorrelation(1:7);
-    %     correlationTable.Properties.VariableNames = ["subjID","001","002","003","004","005","006","007"];
-    %     fprintf("%s\n",emotion);
-    %     disp(correlationTable);
-
-    %plot correlation between subject and mean of all subjects per emotion
-    %(x = mean rating across subjects, y = subject rating)
-    %line of best fit, final relationship = slope (a)
-    %y = ax + b
-
-    %plot slope vs. RS
-    %(x = slope (a), y = RS)
-    %line of best fit using robustfit, final relationship = final
-    %predicted + slope (as slope increases, RS increases)
-
-    %plot corr vs. RS
-    %(x = corr (a), y = RS)
-    %line of best fit using robustfit, final relationship = final
-    %predicted - slope (as corr increases, RS decreases)
-
-
 end
 
-%figure for all emotions
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%subject correlation for all emotions
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
 figure;
 emoCorrForRegression = [];
 
@@ -135,9 +125,12 @@ ylabel('correlation');
 title(['all emotions (P-value: ',num2str(stats.p(2)),')']);
 disp(['P-value for All Data Points: ',num2str(stats.p(2))]);
 
-%figures for each emotion
-emoCorrForRegression = [];
 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%subject correlation between each emotion
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+emoCorrForRegression = [];
 for emotionNumX = 1:numEmotions-1;
     for emotionNumY = emotionNumX+1:numEmotions
         figure;
@@ -156,28 +149,32 @@ for emotionNumX = 1:numEmotions-1;
     end
 end
 
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%subject correlation vs RS score for each emotion
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
 rsScores = importdata('results/rs-scores.csv')
 
 for emotionNum = 1:numEmotions
-    %rsCorrForRegression = subjByEmotionCorrelation(:,emotionNum),rsScores.data(:,2);
     figure;
-    plot(subjByEmotionCorrelation(:,emotionNum), ...
-        rsScores.data(:,2),'o');
+    plot(subjByEmotionCorrelation(:,emotionNum), rsScores.data(:,2),'o');
     hold on;
     [B, stats] = robustfit(subjByEmotionCorrelation(:,emotionNum),rsScores.data(:,2));
-    plot(subjByEmotionCorrelation(:,emotionNum),subjByEmotionCorrelation(:,emotionNum)*B(2)+B(1),'ro-');
+    plot(subjByEmotionCorrelation(:,emotionNum),subjByEmotionCorrelation(:,emotionNum)*B(2)+B(1),'r-');
     xlabel([emotionList{emotionNum},' correlation']);
     ylabel('RS Score');
     title([emotionList{emotionNum},' vs. RS Score (P-value: ',num2str(stats.p(2)),')']);
 end
 
-%scaling factor of each subject plotted against RS for each emotion
-%mySubjSlopes is the scaling factor to get the values for each subject
-%same analysis as the correlation of each subject
-%correlate mySubjSlopes with rsScores
 
-%subject average slope for all emotions vs RS score
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%mean scaling factor (slope) of each subject vs RS score
+%for all emotions
 %X = mean slope, Y= RS score
+%mySubjSlopes is the scaling factor to get the values for each subject
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
 figure;
 plot(mean(mySubjSlopes,2), rsScores.data(:,2), 'o');
 hold on;
@@ -187,8 +184,13 @@ xlabel('Mean slope of correlation for all emotions');
 ylabel('RS Score');
 title(['Mean slope of all emotions vs. RS Score (P-value: ',num2str(stats.p(2)),')']);
 
-%subject average slope for each emotion vs RS score
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%mean scaling factor (slope) of each subject vs RS score
+%for each emotion
 %X = mean slope, Y= RS score
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
 for emotionNum = 1:numEmotions
     figure;
     plot(mySubjSlopes(:,emotionNum), rsScores.data(:,2), 'o');
@@ -203,11 +205,26 @@ for emotionNum = 1:numEmotions
 end
 
 
-%mean across subject for a particular emotion
+%mean correlation across subject for a particular emotion
 % Regression (robustfit):
 %X - Independent variable
 %Y - Dependent variable
 
 %atanh, then convert back using atan
+
+%plot correlation between subject and mean of all subjects per emotion
+%(x = mean rating across subjects, y = subject rating)
+%line of best fit, final relationship = slope (a)
+%y = ax + b
+
+%plot slope vs. RS
+%(x = slope (a), y = RS)
+%line of best fit using robustfit, final relationship = final
+%predicted + slope (as slope increases, RS increases)
+
+%plot corr vs. RS
+%(x = corr (a), y = RS)
+%line of best fit using robustfit, final relationship = final
+%predicted - slope (as corr increases, RS decreases)
 
 
