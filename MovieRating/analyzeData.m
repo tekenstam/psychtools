@@ -7,8 +7,8 @@ close all;
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 if exist('/Users/annikaekenstam/Dropbox/Stimuli/results/', 'dir')
     resultsFolder = '/Users/annikaekenstam/Dropbox/Stimuli/results/';
-elseif exist('/Users/corelabuser/Dropbox/Stimuli/results/', 'dir')
-    resultsFolder = '/Users/corelabuser/Dropbox/Stimuli/results/';
+elseif exist('/Users/corelabuserXXX/Dropbox/Stimuli/results/', 'dir')
+    resultsFolder = '/Users/corelabuserXXX/Dropbox/Stimuli/results/';
 else
     resultsFolder = 'results/';
 end
@@ -246,9 +246,9 @@ plot(X, X * B(2) + B(1), 'r-', 'DisplayName', 'Fit robust linear regression', 'L
 % g.LineStyle = 'none';
 % g.DisplayName = 'Standard error of the mean';
 % g.Color = '#EDB120';
-xlabel('Regression slope of mean');
+xlabel('Regression slope of mean (all emotions)');
 ylabel('RS score');
-title(['Regression slope of mean for all emotions vs. RS score (P-value: ', ...
+title(['Regression slope of mean (all emotions) vs. RS score (P-value: ', ...
     num2str(stats.p(2)), ')']);
 legend;
 
@@ -278,6 +278,46 @@ for emotionNum = 1:numEmotions
         ' mean vs. RS score (P-value: ', num2str(stats.p(2)), ')']);
     legend;
 end
+
+
+%plot correlation to the mean vs regression slope
+for emotionNum = 1:numEmotions
+    figure; hold on;
+    X = subjByEmotionCorrelation(:,emotionNum);
+    Y = mySubjSlopes(:,emotionNum);
+%     errX = mySubjSlopesSEM(:,emotionNum);
+    plot(X, Y, 'o', 'DisplayName', 'Subjects', 'LineWidth', 2);
+    [B, stats] = robustfit(X, Y);
+    %y = ax + b
+    plot(X, X * B(2) + B(1), 'r-', 'DisplayName', 'Fit robust linear regression', 'LineWidth', 2);
+%     g = errorbar(X, Y, errX);
+%     g.LineStyle = 'none';
+%     g.DisplayName = 'Standard error of the mean';
+%     g.Color = '#EDB120';
+    xlabel(['Correlation of ', emotionList{emotionNum},' videos']);
+    ylabel(['Regression slope of ', emotionList{emotionNum}, ' mean']);
+    title(['Correlation vs regression slope for ', emotionList{emotionNum}, ...
+        ' (P-value: ', num2str(stats.p(2)), ')']);
+    legend;
+end
+
+figure; hold on;
+X = mean(subjByEmotionCorrelation, 2);
+Y = mean(mySubjSlopes, 2);
+% errX = mean(mySubjSlopesSEM, 2);
+plot(X, Y, 'o', 'DisplayName', 'Subjects', 'LineWidth', 2);
+[B, stats] = robustfit(X, Y);
+%y = ax + b
+plot(X, X * B(2) + B(1), 'r-', 'DisplayName', 'Fit robust linear regression', 'LineWidth', 2);
+% g = errorbar(X, Y, errX);
+% g.LineStyle = 'none';
+% g.DisplayName = 'Standard error of the mean';
+% g.Color = '#EDB120';
+xlabel('Correlation to the mean');
+ylabel('Regression slope of mean (all emotions)');
+title(['Correlation vs. regression slope (all emotions) (P-value: ', ...
+    num2str(stats.p(2)), ')']);
+legend;
 
 
 %mean correlation across subject for a particular emotion
