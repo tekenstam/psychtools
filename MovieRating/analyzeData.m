@@ -40,6 +40,7 @@ mySubjSlopes = zeros(numSubjects, numEmotions);
 
 %loop through each emotion
 subjByEmotionCorrelation = nan(numSubjects, numEmotions);
+subjByEmotionCorrelationSEM = nan(numSubjects, numEmotions);
 for emotionNum = 1:numEmotions
     emotion = emotionList{emotionNum};
     videoList = results{1}.result.(emotion).info.movieList;
@@ -57,21 +58,35 @@ for emotionNum = 1:numEmotions
         numExpectedDatapoints = round(duration * fps);
 
         videoResults=nan(numExpectedDatapoints, numSubjects);
+        meanAcrossSubjects=nan(numExpectedDatapoints, numSubjects);
         for subjNum = 1:numSubjects
-            subjData = results{subjNum}.result.(emotion).(videoBaseName).data(:,3);
+            %TODO: cleanup data files so this is not needed
+            %HACK: add video 'info' from subject 1 if missing
+            if ~isfield(results{subjNum}.result.(emotion).(videoBaseName), 'info')
+                results{subjNum}.result.(emotion).(videoBaseName).info = ...
+                    results{1}.result.(emotion).(videoBaseName).info;
+            end
+
+            %cleanup errors and gaps in data from data collection
+            subjData = interpolateData(results{subjNum}.result.(emotion).(videoBaseName));
 
             dataLength = length(subjData);
             videoResults(1:dataLength,subjNum) = subjData;
         end
 
-        meanAcrossSubjects = mean(videoResults, 2);
+        indsTemp = 1:numSubjects;
+        for subjNum = 1:numSubjects
+            inds = indsTemp;
+            inds(subjNum) = [];
+            meanAcrossSubjects(:,subjNum) = mean(videoResults(:,inds), 2);
+        end
 
-        standardDeviationAcrossSubjects = std(videoResults, 0, 2);
+        standardErrorAcrossSubjects = std(videoResults, 0, 2)/sqrt(numSubjects);
 
         %for each subject and video, find the slope between mean and
         %subject timeseries
         for subjNum = 1:numSubjects
-            B = robustfit(meanAcrossSubjects, videoResults(:,subjNum));
+            B = robustfit(meanAcrossSubjects(:, subjNum), videoResults(:,subjNum));
             tempSlopes(subjNum, vidNum) = B(2);
         end
 
@@ -79,26 +94,41 @@ for emotionNum = 1:numEmotions
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
         %plot mean and +/- standard deviation across subjects
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-        figure;
-        g = plot(meanAcrossSubjects, '-k');
-        set(g, 'linewidth', 3)
-        hold on
-        plot(videoResults)
-        g = plot(meanAcrossSubjects-standardDeviationAcrossSubjects, ':k');
-        set(g, 'linewidth', 2)
-        g = plot(meanAcrossSubjects+standardDeviationAcrossSubjects, ':k');
-        set(g, 'linewidth', 2)
-        title([emotion, ' video #', num2str(vidNum)]);
+        figure;hold on;
+        plot(videoResults);
+        g1 = plot(mean(meanAcrossSubjects, 2), '-k', 'DisplayName', 'Mean across subjects', 'LineWidth', 3);
+        g2 = plot(mean(meanAcrossSubjects, 2) - standardErrorAcrossSubjects, ':k', 'DisplayName', 'Standard error of the mean', 'LineWidth', 2);
+        plot(mean(meanAcrossSubjects, 2) + standardErrorAcrossSubjects, ':k', 'DisplayName', 'Standard error of the mean', 'LineWidth', 2);
+        title(['Subject ratings of ', emotion, ' video #', num2str(vidNum)]);
+        xlabel('Time (video frame number)');
+        ylabel('Subject rating');
+        legend([g1(1), g2]);
 
-        subjCorrelation(:,vidNum) = corr(videoResults, meanAcrossSubjects, 'rows', 'complete');
+        for subjNum = 1:numSubjects
+            subjCorrelation(subjNum,vidNum) = corr(videoResults(:,subjNum), meanAcrossSubjects(:,subjNum), 'rows', 'complete');
+        end
 
     end
 
-    %calculate mean of slope for each video
-    mySubjSlopes(:,emotionNum) = mean(tempSlopes, 2);
+    %calculate mean of slope for each video, excluding current subject
+    indsTemp = 1:numSubjects;
+    for subjNum = 1:numSubjects
+        inds = indsTemp;
+        inds(subjNum) = [];
+        mySubjSlopes(subjNum,emotionNum) = mean(mean(tempSlopes(inds,:), 1));
+        %JG: Can you check?
+        %mySubjSlopesSEM(subjNum,emotionNum) = std(tempSlopes(inds,:), 0, 1)/sqrt(numSubjects);
+    end
 
     myGroupResults{emotionNum} = subjCorrelation;
-    subjByEmotionCorrelation(:,emotionNum) = mean(subjCorrelation, 2);
+
+    indsTemp = 1:numSubjects;
+    for subjNum = 1:numSubjects
+        inds = indsTemp;
+        inds(subjNum) = [];
+        subjByEmotionCorrelation(subjNum,emotionNum) = mean(subjCorrelation(subjNum,:), 2);
+        subjByEmotionCorrelationSEM(subjNum,emotionNum) = std(subjCorrelation(subjNum,:), 0, 2)/sqrt(numSubjects);
+    end
 
 end
 
@@ -107,25 +137,29 @@ end
 %subject correlation for all emotions
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-figure;
+figure; hold on;
 emoCorrForRegression = nan(numSubjects * factorial(numEmotions - 1), 2);
 for emotionNumX = 1:numEmotions-1
     for emotionNumY = emotionNumX+1:numEmotions
         temp=[subjByEmotionCorrelation(:,emotionNumX), ...
             subjByEmotionCorrelation(:,emotionNumY)];
         emoCorrForRegression = [emoCorrForRegression;temp]; %#ok - Collect all correlations
-        plot(subjByEmotionCorrelation(:,emotionNumX), ...
-            subjByEmotionCorrelation(:,emotionNumY), 'ro');
-        hold on;
+
+        X = subjByEmotionCorrelation(:,emotionNumX);
+        Y = subjByEmotionCorrelation(:,emotionNumY);
+        g1 = plot(X, Y, 'o');
+        g1.set('DisplayName', 'Subject correlation');
+        g1.set('LineWidth', 2);
     end
 end
 
 [B, stats] = robustfit(emoCorrForRegression(:,1), emoCorrForRegression(:,2));
 %y = ax + b
-plot(emoCorrForRegression(:,1), emoCorrForRegression(:,1) * B(2) + B(1));
-xlabel('Correlation');
-ylabel('Correlation');
-title(['All emotions (P-value: ', num2str(stats.p(2)), ')']);
+g2 = plot(emoCorrForRegression(:,1), emoCorrForRegression(:,1) * B(2) + B(1), 'r-', 'DisplayName', 'Fit robust linear regression', 'LineWidth', 2);
+xlabel('Correlation to the mean');
+ylabel('Correlation to the mean');
+title(['Correlation between all emotions (P-value: ', num2str(stats.p(2)), ')']);
+legend([g1 g2], 'location', 'best');
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -135,20 +169,31 @@ title(['All emotions (P-value: ', num2str(stats.p(2)), ')']);
 emoCorrForRegression = nan(numSubjects, 2);
 for emotionNumX = 1:numEmotions-1
     for emotionNumY = emotionNumX+1:numEmotions
-        figure;
+        figure; hold on;
         emoCorrForRegression = [subjByEmotionCorrelation(:,emotionNumX), ...
             subjByEmotionCorrelation(:,emotionNumY)];
-        plot(subjByEmotionCorrelation(:,emotionNumX), ...
-            subjByEmotionCorrelation(:,emotionNumY), 'ro');
-        xlabel([emotionList{emotionNumX}, ' correlation']);
-        ylabel([emotionList{emotionNumY}, ' correlation']);
-        title([emotionList{emotionNumX}, ' vs. ', emotionList{emotionNumY}, ...
-            ' correlation (P-value: ', num2str(stats.p(2)), ')']);
-        hold on;
+        X = subjByEmotionCorrelation(:,emotionNumX);
+        Y = subjByEmotionCorrelation(:,emotionNumY);
+        errX = subjByEmotionCorrelationSEM(:,emotionNumX);
+        errY = subjByEmotionCorrelationSEM(:,emotionNumY);
+        g = plot(X, Y, 'bo');
+        g.set('LineWidth', 2);
+        g.set('DisplayName', 'Subjects');
+        
+        g = errorbar(X, Y, errX, errY, 'both');
+        g.LineStyle = 'none';
+        g.DisplayName = 'Standard error of the mean';
+        g.Color = '#EDB120';
+
+        xlabel(['Correlation of ', emotionList{emotionNumX},' videos']);
+        ylabel(['Correlation of ', emotionList{emotionNumY},' videos']);
+        title(['Correlation between ' emotionList{emotionNumX}, ' and ', emotionList{emotionNumY}, ...
+            ' videos (P-value: ', num2str(stats.p(2)), ')']);
         [B, stats] = robustfit(emoCorrForRegression(:,1), ...
             emoCorrForRegression(:,2));
         %y = ax + b
-        plot(emoCorrForRegression(:,1), emoCorrForRegression(:,1) * B(2) + B(1));
+        plot(emoCorrForRegression(:,1), emoCorrForRegression(:,1) * B(2) + B(1), 'r-', 'DisplayName', 'Fit robust linear regression', 'LineWidth', 2);
+        legend;
     end
 end
 
@@ -160,18 +205,25 @@ end
 rsScores = importdata('results/rs-scores.csv');
 
 for emotionNum = 1:numEmotions
-    figure;
-    plot(subjByEmotionCorrelation(:,emotionNum), rsScores.data(:,2), 'o');
-    hold on;
-    [B, stats] = robustfit(subjByEmotionCorrelation(:,emotionNum), ...
-        rsScores.data(:,2));
+    X = subjByEmotionCorrelation(:,emotionNum);
+    Y = rsScores.data(:,2);
+    errX = subjByEmotionCorrelationSEM(:,emotionNum);
+
+    figure; hold on;
+    plot(X, Y, 'o', 'DisplayName', 'Subjects', 'LineWidth', 2);
+    [B, stats] = robustfit(X, Y);
     %y = ax + b
-    plot(subjByEmotionCorrelation(:,emotionNum), ...
-        subjByEmotionCorrelation(:,emotionNum) * B(2) + B(1), 'r-');
-    xlabel([emotionList{emotionNum},' correlation']);
+    plot(X, X * B(2) + B(1), 'r-', 'DisplayName', 'Fit robust linear regression', 'LineWidth', 2);
+    %TODO: Add errorbar
+    g = errorbar(X, Y, errX);
+    g.LineStyle = 'none';
+    g.DisplayName = 'Standard error of the mean';
+    g.Color = '#EDB120';
+    xlabel(['Correlation of ', emotionList{emotionNum},' videos']);
     ylabel('RS score');
-    title([emotionList{emotionNum},' vs. RS score (P-value: ', ...
+    title(['Correlation of ', emotionList{emotionNum},' videos vs. RS score (P-value: ', ...
         num2str(stats.p(2)), ')']);
+    legend;
 end
 
 
@@ -182,16 +234,23 @@ end
 %mySubjSlopes is the scaling factor to get the values for each subject
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-figure;
-plot(mean(mySubjSlopes, 2), rsScores.data(:,2), 'o');
-hold on;
+figure; hold on;
+X = mean(mySubjSlopes, 2);
+Y = rsScores.data(:,2);
+% errX = mean(mySubjSlopesSEM, 2);
+plot(X, Y, 'o', 'DisplayName', 'Subjects', 'LineWidth', 2);
 [B, stats] = robustfit(mean(mySubjSlopes, 2), rsScores.data(:,2));
 %y = ax + b
-plot(mean(mySubjSlopes, 2), mean(mySubjSlopes, 2) * B(2) + B(1), 'r-');
-xlabel('Mean slope of correlation for all emotions');
+plot(X, X * B(2) + B(1), 'r-', 'DisplayName', 'Fit robust linear regression', 'LineWidth', 2);
+% g = errorbar(X, Y, errX);
+% g.LineStyle = 'none';
+% g.DisplayName = 'Standard error of the mean';
+% g.Color = '#EDB120';
+xlabel('Regression slope of mean');
 ylabel('RS score');
-title(['Mean slope of all emotions vs. RS score (P-value: ', ...
+title(['Regression slope of mean for all emotions vs. RS score (P-value: ', ...
     num2str(stats.p(2)), ')']);
+legend;
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -201,17 +260,23 @@ title(['Mean slope of all emotions vs. RS score (P-value: ', ...
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 for emotionNum = 1:numEmotions
-    figure;
-    plot(mySubjSlopes(:,emotionNum), rsScores.data(:,2), 'o');
-    hold on;
-    [B, stats] = robustfit(mySubjSlopes(:,emotionNum), rsScores.data(:,2));
+    figure; hold on;
+    X = mySubjSlopes(:,emotionNum);
+    Y = rsScores.data(:,2);
+%     errX = mySubjSlopesSEM(:,emotionNum);
+    plot(X, Y, 'o', 'DisplayName', 'Subjects', 'LineWidth', 2);
+    [B, stats] = robustfit(X, Y);
     %y = ax + b
-    plot(mySubjSlopes(:,emotionNum), mySubjSlopes(:,emotionNum) * B(2) + B(1), 'r-');
-    xlabel(['Slope of ', emotionList{emotionNum}, ' correlation']);
+    plot(X, X * B(2) + B(1), 'r-', 'DisplayName', 'Fit robust linear regression', 'LineWidth', 2);
+%     g = errorbar(X, Y, errX);
+%     g.LineStyle = 'none';
+%     g.DisplayName = 'Standard error of the mean';
+%     g.Color = '#EDB120';
+    xlabel(['Regression slope of ', emotionList{emotionNum}, ' mean']);
     ylabel('RS score');
-    title(['Slope of ', emotionList{emotionNum}, ...
-        ' correlation vs. RS score (P-value: ', num2str(stats.p(2)), ')']);
-
+    title(['Regression slope of ', emotionList{emotionNum}, ...
+        ' mean vs. RS score (P-value: ', num2str(stats.p(2)), ')']);
+    legend;
 end
 
 
@@ -238,3 +303,50 @@ end
 %predicted - slope (as corr increases, RS decreases)
 
 
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% helper function to fill gaps in rating data using interpolation
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+function subjData = interpolateData(videoStruct)
+
+%normalize rating data to 'maxRating'
+%JG: This should not be needed
+% maxValue = max(videoStruct.data(:,3));
+% maxRating = 20;
+% if maxValue > maxRating
+%     videoStruct.data(:,3) = normalize(videoStruct.data(:,3), 'range', [ 1 maxRating]);
+% end
+
+%fill gaps in rating data using interpolation
+secondsPerFrame=1/videoStruct.info.fps;
+numFrames=round(videoStruct.info.duration/secondsPerFrame);
+xq = (videoStruct.data(1,1):secondsPerFrame:videoStruct.data(1,1)+(secondsPerFrame*(numFrames-1)));
+xq = reshape(xq, [], 1);
+
+subjData = interp1(videoStruct.data(:,1), videoStruct.data(:,3), xq);
+
+end
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% helper function to export all figures with print resolution
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+function exportAllFigures()  %#ok - This function is manually called
+
+figList = findall(groot,'Type','figure');
+numFigures = numel(figList);
+for figNum = 1:numFigures
+    fig_h = figList(figNum);
+    fig_h.Position = [fig_h.Position(1), fig_h.Position(2), ...
+        fig_h.Position(3)*2, fig_h.Position(4)*2];
+    ax = get(fig_h, 'CurrentAxes');
+    ax.FontSize = 18; 
+    ax.LineWidth = 2;
+
+    h1 = findall(figList(figNum),'Type','text');
+    figTitle = h1(1).String;
+
+    exportgraphics(fig_h, ['figures/', figTitle, '.png'], 'Resolution', 300);
+end
+
+end
