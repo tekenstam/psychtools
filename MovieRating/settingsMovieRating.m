@@ -1,10 +1,10 @@
 %%
-%% Settings for change blindness experiment
+%% Settings for movie rating experiment
 %% Change these to suit your experiment!
 %%
 
 % Add directory paths to the list to support variations of where the stimuli groups are located.
-% This is used to support multiple computers/installations with different locations of stumuli files.
+% This is used to support multiple computers/installations with different locations of stimuli files.
 directoryList{1}='/Users/jackgrinband/Dropbox/expts/movie_rating/';
 directoryList{2}='/Users/jack/Dropbox/expts/movie_rating/';
 directoryList{3}='/Users/annikaekenstam/Dropbox/Stimuli/';
